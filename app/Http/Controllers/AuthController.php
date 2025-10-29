@@ -21,14 +21,13 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         $credentials = $request->validate([
-    'name' => ['required', 'string'],
-    'password' => ['required'],
-]);
-
+            'login' => ['required', 'string'], // Changé de 'name' à 'login'
+            'password' => ['required'],
+        ]);
 
         if (!Auth::attempt($credentials, $request->boolean('remember_me'))) {
             return response()->json([
-                'message' => 'Nom ou mot de passe incorrect.'
+                'message' => 'Login ou mot de passe incorrect.' // Message mis à jour
             ], 422);
         }
 

@@ -29,9 +29,8 @@
                 <div class="intro-x mt-8">
                     <form id="login-form">
                         @csrf
-                       <input type="text" id="input-name" name="name" class="intro-x login__input input input--lg border border-gray-300 block" placeholder="Nom d'utilisateur" required>
-                        <div id="error-name" class="login__input-error w-5/6 text-theme-6 mt-2"></div>
-
+                        <input type="text" id="input-login" name="login" class="intro-x login__input input input--lg border border-gray-300 block" placeholder="login" required>
+                        <div id="error-login" class="login__input-error w-5/6 text-theme-6 mt-2"></div>
 
                         <input type="password" id="input-password" name="password" class="intro-x login__input input input--lg border border-gray-300 block mt-4" placeholder="Mot de passe" required>
                         <div id="error-password" class="login__input-error w-5/6 text-theme-6 mt-2"></div>
@@ -67,7 +66,7 @@
             cash('#login-form').find('.input').removeClass('border-theme-6');
             cash('#login-form').find('.login__input-error').html('');
 
-          let name = cash('#input-name').val();
+            let loginValue = cash('#input-login').val(); // Changé pour correspondre à l'ID
             let password = cash('#input-password').val();
             let rememberMe = cash('#input-remember-me').is(':checked');
 
@@ -76,7 +75,7 @@
 
             try {
                 await axios.post('{{ route("login") }}', {
-                    name: name,
+                    login: loginValue, // Changé de 'name' à 'login'
                     password: password,
                     remember_me: rememberMe,
                     _token: '{{ csrf_token() }}'
@@ -94,7 +93,7 @@
                         cash(`#error-${key}`).html(val[0]);
                     }
 
-                    if (err.response.data.message && !errors.email && !errors.password) {
+                    if (err.response.data.message && !errors.login && !errors.password) { // Changé 'email' à 'login'
                         cash(`#input-password`).addClass('border-theme-6');
                         cash(`#error-password`).html(err.response.data.message);
                     }

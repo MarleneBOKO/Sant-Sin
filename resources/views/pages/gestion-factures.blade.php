@@ -30,79 +30,79 @@
 @endsection
 
 @section('subcontent')
-<div x-data="{
-        openAddIndividuelle: false, openAddTiersPayant: false,
-        openEdit: false,
-        editingFacture: null,
-        openEditModal(id) {
-            fetch(`/factures/${id}`)
-                .then(r => r.json())
-                .then(data => {
-                    this.editingFacture = data.facture;
-                    this.openEdit = true;
-                })
-                .catch(() => alert('Erreur chargement facture'));
-        },
-       init() {
-    @if ($errors->any())
-        @if(Auth::user()->profil?->id == 4)
-            this.openAddIndividuelle = true;
-        @else
-            this.openAddTiersPayant = true;
-        @endif
-    @endif
-}
-
-    }"
-    x-cloak
-    class="p-4">
+<div x-data="factureSelection()" x-cloak class="p-4">
 
 <div class="flex items-center justify-between mt-8 mb-4">
     <h2 class="text-2xl font-semibold">
-     @php
-    $profilId = Auth::user()->profil?->id;
-    @endphp
+  @php
+    $profilCode = Auth::user()->profil?->code_profil;
+@endphp
 
-    <h2 class="text-2xl font-semibold">
-        @if(in_array($profilId, [4]))
+     <h2 class="text-2xl font-semibold">
+        @if($profilCode === 'RSI')
             Liste des Factures Individuelles
-        @elseif(in_array($profilId, [8]))
+        @elseif($profilCode === 'RSTP')
             Liste des Factures Tiers-Payant
-        @elseif(in_array($profilId, [3,5]))
+        @elseif(in_array($profilCode, ['RSIN', 'ADMIN']))
             Liste des Factures Tiers-Payant et Individuelles
         @endif
     </h2>
 
-    </h2>
+    @if(in_array($profilCode, ['RSI', 'RSIN', 'ADMIN']))
+        <button @click="openAddIndividuelle = true" class="btn btn-primary">
+            Nouvelle facture individuelle
+        </button>
+    @endif
 
-    @if(in_array($profilId, [4, 3, 5]))
-    <button @click="openAddIndividuelle = true" class="btn btn-primary">
-        Nouvelle facture individuelle
-    </button>
-@endif
-
-@if(in_array($profilId, [8, 3, 5]))
-    <button @click="openAddTiersPayant = true" class="btn btn-primary">
-        Nouvelle facture Tiers-Payant
-    </button>
-@endif
+ @if(in_array($profilCode, ['RSTP', 'RSIN', 'ADMIN']))
+        <button @click="openAddTiersPayant = true" class="btn btn-primary">
+            Nouvelle facture Tiers-Payant
+        </button>
+    @endif
+   <button x-show="selectedFactures.length > 0"
+        @click="openValiderModal = true"
+        class="btn btn-success"
+        type="button">
+    Valider
+</button>
+<div class="mb-4">
+    <form method="GET" action="{{ url()->current() }}" class="flex items-center space-x-2">
+        <input type="text" name="search" value="{{ request()->get('search', '') }}"
+               placeholder="Rechercher par assuré, référence, numéro de réception, souscripteur ou prestataire..."
+               class="flex-1 px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            Rechercher
+        </button>
+        @if(request()->has('search'))
+            <a href="{{ url()->current() }}" class="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600">
+                Effacer
+            </a>
+        @endif
+    </form>
+</div>
 
   </div>
 
     <div class="overflow-auto">
+        @if(session('success'))
+    <div class="alert alert-success mb-4">
+        {{ session('success') }}
+    </div>
+@endif
         <table class="table-auto w-full text-sm border">
             <thead class="bg-gray-100">
                    <tr>
-                @if($profilId == 4)
-                    <th class="px-4 py-2" >Assuré</th>
-                    <th class="px-4 py-2" >Souscripteur</th>
-                        @elseif($profilId == 8)
-                            <th class="px-4 py-2" >Prestataire</th>
-                            <th class="px-4 py-2" >N° Facture</th>
-                        @else
-                            <th class="px-4 py-2" >Assuré / Prestataire</th>
-                            <th class="px-4 py-2" >Souscripteur / Référence</th>
-                        @endif
+                <th class="px-4 py-2">Validé</th>
+                @if($profilCode === 'RSI')
+                    <th class="px-4 py-2">Assuré</th>
+                    <th class="px-4 py-2">Souscripteur</th>
+                @elseif($profilCode === 'RSTP')
+                    <th class="px-4 py-2">Prestataire</th>
+                    <th class="px-4 py-2">N° Facture</th>
+                @else
+                    <th class="px-4 py-2">Assuré / Prestataire</th>
+                    <th class="px-4 py-2">Souscripteur / Référence</th>
+                @endif
                                 <th>Période</th>
                         <th class="px-4 py-2" >Montant</th>
                         <th class="px-4 py-2" >N° Réception</th>
@@ -112,21 +112,32 @@
                         <th class="px-4 py-2" >Date de transmission Effective</th>
                         <th class="px-4 py-2" >Date de retour Estimée</th>
                         <th class="px-4 py-2">Mise à jour</th>
+                         <th class="px-4 py-2">Action</th>
                 </tr>
             </thead>
 
             <tbody class=" text-center">
                 @foreach($factures as $facture)
-                    @if($profilId == 4)
-            <td class="border px-4 py-2" >{{ $facture->Nom_Assure }}</td>
-                    <td class="border px-4 py-2" >{{ $facture->souscripteur?->nom }}</td>
-                @elseif($profilId == 8)
-                    <td class="border px-4 py-2" >{{ $facture->prestataire?->nom }}</td>
-                    <td class="border px-4 py-2" >{{ $facture->Reference_Facture }}</td>
-                @else
-                    <td class="border px-4 py-2" >{{ $facture->Nom_Assure ?? $facture->prestataire?->nom }}</td>
-                    <td class="border px-4 py-2" >{{ $facture->souscripteur?->nom ?? $facture->Reference_Facture }}</td>
-                @endif
+                <tr>
+                    <td class="border px-4 py-2 text-center">
+                        @if($facture->Statut_Ligne != 4 && $facture->rejete != 1 && $facture->Statut_Ligne != 3)
+                            <input type="checkbox"
+                                :value="{{ $facture->Id_Ligne }}"
+                                @change="toggleSelection($event)"
+                                :checked="selectedFactures.includes({{ $facture->Id_Ligne }})" />
+                        @endif
+                    </td>
+
+                                   @if($profilCode === 'RSI')
+                        <td class="border px-4 py-2">{{ $facture->Nom_Assure }}</td>
+                        <td class="border px-4 py-2">{{ $facture->souscripteur?->nom }}</td>
+                    @elseif($profilCode === 'RSTP')
+                        <td class="border px-4 py-2">{{ $facture->prestataire?->nom }}</td>
+                        <td class="border px-4 py-2">{{ $facture->Reference_Facture }}</td>
+                    @else
+                        <td class="border px-4 py-2">{{ $facture->Nom_Assure ?? $facture->prestataire?->nom }}</td>
+                        <td class="border px-4 py-2">{{ $facture->souscripteur?->nom ?? $facture->Reference_Facture }}</td>
+                    @endif
                         <td class="border px-4 py-2" >{{ $facture->Date_Debut->format('d/m/Y') }} au {{ $facture->Date_Fin->format('d/m/Y') }}</td>
                         <td class="border px-4 py-2">{{ number_format($facture->Montant_Ligne, 0, ',', ' ') }}</td>
                          <td class="border px-4 py-2" >{{ $facture->Numero_Reception }}</td>
@@ -140,129 +151,157 @@
                         $estTraitee = $facture->estTraitee();
                     @endphp
 
-                    <!-- Dans votre fichier gestion-facture.blade.php -->
-<!-- Remplacez la section des boutons d'actions par ceci : -->
 
-<td class="border px-4 py-2">
-    <div class="flex items-center justify-between gap-2">
-        <!-- Bouton modifier -->
-        <button type="button" class="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded transition-colors trans"
-                data-id="{{ $facture->Id_Ligne }}"
-                data-prest="{{ $facture->Nom_Assure ?: ($facture->prestataire?->nom ?? '') }}"
-                data-deb="{{ $facture->Date_Debut->format('Y-m-d') }}"
-                data-fin="{{ $facture->Date_Fin->format('Y-m-d') }}"
-                data-mont="{{ $facture->Montant_Ligne }}"
-                title="Modifier">
-            <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-            </svg>
-        </button>
+                        <td class="border px-4 py-2">
+                            @php
+                                $estValidee = ($facture->Statut_Ligne == 3);
+                                $estTraitee = $facture->estTraitee();
+                                $estCloturee = ($facture->Statut_Ligne == 4);
+                            @endphp
 
-        @php
-            $estTraitee = $facture->estTraitee();
-            $estCloturee = ($facture->statut_Ligne == 4); // Statut 4 = Clôturée
-        @endphp
+                          <div class="flex items-center gap-2 justify-center ">
 
-        <!-- Bouton traiter -->
-        @if($estTraitee)
-            <button type="button"
-                class="bg-gray-400 text-white px-3 py-1 rounded-md cursor-not-allowed opacity-60"
-                disabled
-                title="Facture déjà traitée">
-                <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-            </button>
-        @else
-            <button type="button"
-                class="btn-traiter bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md"
-                data-ref="{{ $facture->Id_Ligne }}"
-                data-fact="{{ $facture->Reference_Facture ?? '' }}"
-                data-assures="{{ $facture->Nom_Assure ?? '' }}"
-                data-souscripteur="{{ optional($facture->souscripteur)->nom ?? '' }}"
-                data-prestataire="{{ optional($facture->prestataire)->nom ?? '' }}"
-                data-dateenreg="{{ optional($facture->Date_Enregistrement)->format('Y-m-d') ?? '' }}"
-                data-montant="{{ $facture->Montant_Ligne ?? 0 }}"
-                data-montrejete="{{ $facture->montrejete ?? 0 }}"
-                data-datetransmission="{{ optional($facture->Date_Transmission)->format('Y-m-d') ?? '' }}"
-                data-agent="{{ auth()->user()->name }}"
-                onclick="openTraitementModal(this)"
-                title="Traiter la facture">
-                <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                </svg>
-            </button>
-        @endif
+                            <!-- Bouton modifier toujours visible -->
+                            <button type="button" class="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded transition-colors trans"
+                                    data-id="{{ $facture->Id_Ligne }}"
+                                    data-prest="{{ $facture->Nom_Assure ?: ($facture->prestataire?->nom ?? '') }}"
+                                    data-deb="{{ $facture->Date_Debut->format('Y-m-d') }}"
+                                    data-fin="{{ $facture->Date_Fin->format('Y-m-d') }}"
+                                    data-mont="{{ $facture->Montant_Ligne }}"
+                                    title="Modifier">
+                                <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                                </svg>
+                            </button>
+                            <!-- Bouton traiter uniquement si non traité, non validé, non clôturé -->
+                            @if(!$estTraitee && !$estValidee && !$estCloturee)
+                                    <button type="button"
+                                            class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded"
+                                            data-ref="{{ $facture->Id_Ligne }}"
+                                            data-fact="{{ $facture->Reference_Facture ?? '' }}"
+                                            data-assures="{{ $facture->Nom_Assure ?? '' }}"
+                                            data-souscripteur="{{ optional($facture->souscripteur)->nom ?? '' }}"
+                                            data-prestataire="{{ optional($facture->prestataire)->nom ?? '' }}"
+                                            data-dateenreg="{{ optional($facture->Date_Enregistrement)->format('Y-m-d') ?? '' }}"
+                                            data-montant="{{ $facture->Montant_Ligne ?? 0 }}"
+                                            data-montrejete="{{ $facture->montrejete ?? 0 }}"
+                                            data-datetransmission="{{ optional($facture->Date_Transmission)->format('Y-m-d') ?? '' }}"
+                                            data-agent="{{ auth()->user()->name }}"
+                                            onclick="openTraitementModal(this)"
+                                            title="Traiter la facture">
+                                        <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                    </button>
+                                 @endif
 
-        <!-- Bouton rejeter -->
-        @if($estTraitee || $estCloturee)
-            <button type="button"
-                class="bg-gray-400 text-white px-3 py-1 rounded-md cursor-not-allowed opacity-60"
-                disabled
-                title="Facture {{ $estCloturee ? 'clôturée' : 'traitée' }} — rejet non autorisé">
-                <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-            </button>
-        @else
-            <button type="button"
-                class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md btn-rejet"
-                data-id="{{ $facture->Id_Ligne }}"
-                data-assure="{{ $facture->Nom_Assure ?? $facture->prestataire?->nom }}"
-                data-souscripteur="{{ $facture->souscripteur?->nom ?? $facture->Reference_Facture }}"
-                data-mont="{{ $facture->Montant_Ligne }}"
-                data-numrecept="{{ $facture->Numero_Reception }}"
-                data-ref="{{ $facture->Reference_Facture }}"
-                data-dateenreg="{{ optional($facture->Date_Enregistrement)->format('d/m/Y') }}"
-                data-agent="{{ auth()->user()->name }}"
-                onclick="openRejetModal(this)"
-                title="Rejeter cette facture">
-                <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                </svg>
-            </button>
-        @endif
+                                <!-- Bouton rejeter uniquement si non traité, non validé, non clôturé -->
+                                @if(!$estTraitee && !$estValidee && !$estCloturee)
+                                    <button type="button"
+                                            class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded btn-rejet"
+                                            data-id="{{ $facture->Id_Ligne }}"
+                                            data-assure="{{ $facture->Nom_Assure ?? $facture->prestataire?->nom }}"
+                                            data-souscripteur="{{ $facture->souscripteur?->nom ?? $facture->Reference_Facture }}"
+                                            data-mont="{{ $facture->Montant_Ligne }}"
+                                            data-numrecept="{{ $facture->Numero_Reception }}"
+                                            data-ref="{{ $facture->Reference_Facture }}"
+                                            data-dateenreg="{{ optional($facture->Date_Enregistrement)->format('d/m/Y') }}"
+                                            data-agent="{{ auth()->user()->name }}"
+                                            onclick="openRejetModal(this)"
+                                            title="Rejeter cette facture">
+                                        <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                    </button>
+                                @endif
 
-        <!-- NOUVEAU : Bouton clôturer -->
-        @if($estCloturee)
-            <!-- Facture déjà clôturée - Affichage du statut -->
-            <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-md text-xs font-semibold flex items-center">
-                <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
-                </svg>
-                Clôturée
-            </span>
-        @elseif($estTraitee)
-            <!-- Facture traitée - Bouton clôturer actif -->
-            <button type="button"
-                class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md btn-cloture"
-                data-ref="{{ $facture->Id_Ligne }}"
-                data-reference="{{ $facture->Reference_Facture ?? 'N/A' }}"
-                data-assure="{{ $facture->Nom_Assure ?? $facture->prestataire?->nom }}"
-                onclick="openClotureModal(this)"
-                title="Clôturer cette facture">
-                <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-            </button>
-        @else
-            <!-- Facture non traitée - Bouton clôturer désactivé -->
-            <button type="button"
-                class="bg-gray-400 text-white px-3 py-1 rounded-md cursor-not-allowed opacity-60"
-                disabled
-                title="Facture non traitée — clôture non autorisée">
-                <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-            </button>
-        @endif
-    </div>
-</td>
-                    </tr>
+                                <!-- Bouton clôturer uniquement si traitée et non clôturée -->
+                                @if($estTraitee && !$estCloturee)
+                                    <button type="button"
+                                            class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded btn-cloture"
+                                            data-ref="{{ $facture->Id_Ligne }}"
+                                            data-reference="{{ $facture->Reference_Facture ?? 'N/A' }}"
+                                            data-assure="{{ $facture->Nom_Assure ?? $facture->prestataire?->nom }}"
+                                            onclick="openClotureModal(this)"
+                                            title="Clôturer cette facture">
+                                        <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                        </svg>
+                                    </button>
+                                @endif
+
+                                <!-- Affichage statut clôturée -->
+                                @if($estCloturee)
+                                    <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded text-xs font-semibold flex items-center">
+                                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd"
+                                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                clip-rule="evenodd"/>
+                                        </svg>
+                                        Clôturée
+                                    </span>
+                                @endif
+
+                                <!-- Affichage statut validée -->
+                                @if($estValidee)
+                                    <span class="bg-green-100 text-green-800 px-3 py-1 rounded text-xs font-semibold flex items-center">
+                                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd"
+                                                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                                clip-rule="evenodd"/>
+                                        </svg>
+                                        Validée
+                                    </span>
+                                @endif
+
+
+                                      @php
+                                            $canRegler = !empty($facture->Numero_demande) && empty($facture->Montant_Reglement);
+                                        @endphp
+
+                                        @if ($canRegler)
+                                            <button type="button"
+                                                    class="btn btn-info d-flex align-items-center gap-1 px-3 py-1"
+                                                    onclick="openReglerModal(this)"
+                                                    data-id="{{ $facture->Id_Ligne }}"
+                                                    data-ref="{{ $facture->Reference_Facture ?? '' }}"
+                                                    data-fact="{{ $facture->souscripteur?->nom ?? $facture->Reference_Facture ?? '' }}"
+                                                    data-assure="{{ $facture->Nom_Assure ?? $facture->prestataire?->nom ?? '' }}"
+                                                    data-numdem="{{ $facture->Numero_demande ?? '' }}"
+                                                    data-dateenreg="{{ optional($facture->Date_Enregistrement)->format('d/m/Y') }}"
+                                                    data-datedemande="{{ optional($facture->Date_Demande)->format('d/m/Y') }}"
+                                                    data-datetransmission="{{ optional($facture->Date_Transmission)->format('d/m/Y') }}"
+                                                    data-montantfacture="{{ number_format($facture->Montant_Ligne, 0, ',', ' ') }}"
+                                                    data-montantreglement="{{ number_format($facture->Montant_Reglement ?? 0, 0, ',', ' ') }}"
+                                                    data-montantrejete="{{ number_format(($facture->Montant_Ligne - ($facture->Montant_Reglement ?? 0)), 0, ',', ' ') }}"
+                                                    data-datesaisie="{{ now()->format('d/m/Y') }}"
+                                                    data-user="{{ auth()->user()->name }}"
+                                                    data-ncheque="{{ $facture->Numero_Cheque ?? '' }}"
+                                                    title="Régler cette facture">
+                                                <i class="fas fa-money-check-alt"></i>
+                                            </button>
+
+                                        @endif
+
+
+
+
+
+
+                            </div>
+                        </td>
+                </tr>
+
+
+                            </tr>
                 @endforeach
             </tbody>
 
         </table>
+        <div class="mt-4 flex justify-center">
+    {{ $factures->links() }}
+</div>
     </div>
 
     <!-- Modal Ajouter -->
@@ -449,18 +488,19 @@
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-                <div>
-                    <label class="block mb-1 font-medium">Prestataire :</label>
-                    <select name="Code_Prestataire" required
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
-                        <option value="">Sélectionner</option>
-                        @foreach($prestataires as $prestataire)
-                            <option value="{{ $prestataire->id }}" @selected(old('Code_Prestataire') == $prestataire->id)>
-                                {{ $prestataire->nom }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
+               <div>
+                <label class="block mb-1 font-medium">Prestataire :</label>
+                <select name="Code_partenaire" required  <!-- Corrigé : Code_partenaire -->
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    <option value="">Sélectionner</option>
+                    @foreach($prestataires as $prestataire)
+                        <option value="{{ $prestataire->id }}" @selected(old('Code_partenaire') == $prestataire->id)>  <!-- Corrigé : Code_partenaire -->
+                            {{ $prestataire->nom }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+
 
                 <div>
                     <label class="block mb-1 font-medium">N° Réception :</label>
@@ -541,6 +581,26 @@
 </div>
 
 
+    <div x-show="openValiderModal" x-cloak
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div @click.away="openValiderModal = false" class="bg-white p-6 rounded shadow max-w-md w-full">
+            <h3 class="text-lg font-bold mb-4">Valider la date de transmission</h3>
+            <form method="POST" action="{{ route('ligne_suivi.valider') }}" @submit.prevent="submitValidation">
+                @csrf
+                <input type="hidden" name="factures" x-ref="factures" />
+                <div>
+                    <label for="date_transmission" class="block mb-1 font-medium">Date de transmission :</label>
+                    <input type="date" id="date_transmission" name="date_transmission" required
+                        class="w-full px-3 py-2 border rounded" max="{{ date('Y-m-d') }}" />
+                </div>
+                <div class="mt-4 flex justify-end space-x-2">
+                    <button type="button" @click="openValiderModal = false" class="btn btn-secondary">Annuler</button>
+                    <button type="submit" class="btn btn-primary">Valider</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
 
 <div id="transM" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
     <div class="relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white">
@@ -549,6 +609,52 @@
         </div>
     </div>
 </div>
+
+
+
+<div x-data="reglerModal()" x-cloak>
+    <div x-show="isOpen"
+         x-transition
+         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+         @keydown.escape.window="close()">
+
+        <div @click.stop
+             class="bg-white p-6 rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-screen overflow-y-auto">
+
+            <div class="flex justify-between items-center mb-4 pb-2 border-b">
+                <h3 class="text-xl font-bold">Référence chèque</h3>
+                <button @click="close()" class="text-gray-400 hover:text-gray-600 text-3xl">&times;</button>
+            </div>
+
+            <form method="POST" :action="`/ligne_suivi/regler/${formData.id}`" @submit.prevent="submitForm($event)">
+                @csrf
+                <input type="hidden" name="ref" :value="formData.id" />
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <template x-for="field in fields" :key="field.key">
+                        <div>
+                            <label class="block font-medium text-sm mb-1" x-text="field.label"></label>
+                            <input type="text" readonly class="w-full border rounded px-3 py-2 bg-gray-50 text-sm"
+                                   :value="formData[field.key] || ''" />
+                        </div>
+                    </template>
+
+                    <div>
+                        <label class="block font-medium text-sm mb-1">N° Chèque <span class="text-red-500">*</span> :</label>
+                        <input type="text" name="numero_cheque" x-model="formData.ncheque" required
+                               class="w-full border rounded px-3 py-2 focus:ring-2 focus:ring-blue-500" />
+                    </div>
+                </div>
+
+                <div class="flex justify-end space-x-3 pt-4 border-t">
+                    <button type="button" @click="close()" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-6 py-2 rounded">Annuler</button>
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded">Valider</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 
 @include('pages.edit_modalTraiter')
 @include('pages.rejet-facture')
@@ -749,6 +855,118 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 
+function factureSelection() {
+    return {
+        openAddIndividuelle: false,
+        openAddTiersPayant: false,
+        openEdit: false,
+        openValiderModal: false,
+        selectedFactures: [],
+        editingFacture: null,
+        openEditModal(id) {
+            fetch(`/factures/${id}`)
+                .then(r => r.json())
+                .then(data => {
+                    this.editingFacture = data.facture;
+                    this.openEdit = true;
+                })
+                .catch(() => alert('Erreur chargement facture'));
+        },
+        toggleSelection(event) {
+            const id = parseInt(event.target.value);
+            if (event.target.checked) {
+                if (!this.selectedFactures.includes(id)) {
+                    this.selectedFactures.push(id);
+                }
+            } else {
+                this.selectedFactures = this.selectedFactures.filter(i => i !== id);
+            }
+        },
+        submitValidation(event) {
+            if (this.selectedFactures.length === 0) {
+                alert('Veuillez sélectionner au moins une facture.');
+                return;
+            }
+            this.$refs.factures.value = this.selectedFactures.join(',');
+            event.target.submit();
+        },
+        init() {
+            @if ($errors->any())
+                @if(Auth::user()->profil?->id == 4)
+                    this.openAddIndividuelle = true;
+                @else
+                    this.openAddTiersPayant = true;
+                @endif
+            @endif
+        }
+    }
+}
+
+       // Fonction globale pour ouvrir le modal
+        function openReglerModal(button) {
+            console.log('openReglerModal appelée', button.dataset);
+
+            // Obtenir l'instance Alpine.js du modal
+            const modalElement = document.querySelector('[x-data*="reglerModal"]');
+            const modalData = Alpine.$data(modalElement);
+
+            if (modalData) {
+                modalData.open(button.dataset);
+            } else {
+                console.error('Instance du modal non trouvée');
+            }
+        }
+
+       function openReglerModal(button) {
+    const modalElement = document.querySelector('[x-data*="reglerModal"]');
+    const modalData = Alpine.$data(modalElement);
+    if (modalData) {
+        modalData.open(button.dataset);
+    }
+}
+
+function reglerModal() {
+    return {
+        isOpen: false,
+        formData: {},
+        fields: [
+            { label: 'N° Facture / Souscripteur', key: 'fact' },
+            { label: 'Assuré / Prestataire', key: 'assure' },
+            { label: 'N° Demande', key: 'numdem' },
+            { label: 'Date Enregistrement', key: 'dateenreg' },
+            { label: 'Date Demande', key: 'datedemande' },
+            { label: 'Date Transmission', key: 'datetransmission' },
+            { label: 'Montant Facture', key: 'montantfacture' },
+            { label: 'Montant Règlement', key: 'montantreglement' },
+            { label: 'Montant Rejeté', key: 'montantrejete' },
+            { label: 'Date Saisie', key: 'datesaisie' },
+            { label: 'Chèque enregistré par', key: 'user' }
+        ],
+
+        open(dataset) {
+            this.formData = { ...dataset, ncheque: dataset.ncheque || '' };
+            this.isOpen = true;
+            document.body.style.overflow = 'hidden';
+        },
+
+        close() {
+            this.isOpen = false;
+            document.body.style.overflow = '';
+            this.formData = {};
+        },
+
+        submitForm(event) {
+            if (!this.formData.ncheque?.trim()) {
+                alert('Veuillez saisir un numéro de chèque');
+                return;
+            }
+
+            // Soumettre le formulaire
+            event.target.submit();
+        }
+    }
+}
+
 
 $(document).ready(function () {
     console.log('Document ready - Tailwind modal');
@@ -883,3 +1101,25 @@ $(document).ready(function () {
 });
 </script>
 
+<style>
+        [x-cloak] { display: none !important; }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            margin: 10px;
+        }
+        .btn-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .btn-info:hover {
+            background-color: #138496;
+        }
+
+        /* Force l'affichage du modal quand il est ouvert */
+        .modal-overlay.show {
+            display: flex !important;
+        }
+    </style>

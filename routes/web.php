@@ -10,6 +10,11 @@ use App\Http\Controllers\MenuProfilController;
 use App\Http\Controllers\MenuProfilDroitController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\LigneSuiviController;
+use App\Http\Controllers\FactureController;
+use App\Http\Controllers\CourierSanteIndivController;
+
+use App\Http\Controllers\DashboardController;
+
 Route::get('/', function () {
     return redirect()->route('login-view');
 });
@@ -52,29 +57,96 @@ Route::delete('/profils/{id}', [ProfilController::class, 'destroy'])->name('prof
     Route::post('/menu-profil-droit', [MenuProfilDroitController::class, 'store']);
     Route::delete('/menu-profil-droit/{id}', [MenuProfilDroitController::class, 'destroy']);
 
-// web.php
-Route::put('/ligne_suivi/{id}/traiter', [LigneSuiviController::class, 'traiter'])->name('ligne_suivi.traiter');
-// Route POST pour rejeter une facture
-Route::post('/ligne_suivi/{id}/rejeter', [LigneSuiviController::class, 'rejeter'])->name('ligne_suivi.rejeter');
-
-Route::put('/ligne_suivi/{id}/cloturer', [LigneSuiviController::class, 'cloturer'])->name('ligne_suivi.cloturer');
 
 
-// Affichage des lignes de suivi (page principale)
+Route::post('transmit', [LigneSuiviController::class, 'transmitBatch'])->name('transmit.batch');
+Route::post('retour', [LigneSuiviController::class, 'handleRetourBatch'])->name('retour.batch');
+
+// Individual routes (WITH {id} parameter)
+Route::post('{id}/transmit', [LigneSuiviController::class, 'transmitIndividual'])->name('transmit.individual');
+Route::post('{id}/retour', [LigneSuiviController::class, 'handleRetourIndividual'])->name('retour.individual');
+
+// Modals (AJAX GET)
+Route::get('{id}/transmission-modal', [LigneSuiviController::class, 'loadTransmissionModal'])->name('transmission.modal');
+Route::get('{id}/retour-modal', [LigneSuiviController::class, 'loadRetourModal'])->name('retour.modal');
+Route::get('{id}/edit-modal', [LigneSuiviController::class, 'editModal'])->name('edit.modal');
+
+// Edit/Update
+Route::get('{id}/edit', [LigneSuiviController::class, 'edit'])->name('ligne_suivi.edit');
+Route::match(['put', 'patch'], '{id}', [LigneSuiviController::class, 'update'])->name('ligne_suivi.update');
+
+
+Route::get('/detailReseau', [LigneSuiviController::class, 'detailReseau'])->name('detailReseau.index');
+
+Route::get('/courriers/fiche/{numCour}', [CourierSanteIndivController::class, 'printFiche'])
+    ->name('courriers.printFiche');
+// Ajoutez ceci (ajustez si vous avez un groupe de routes avec middleware auth)
+Route::get('/courriers/{numCour}/saisie-facture', [CourierSanteIndivController::class, 'saisieFactureModal'])->name('courriers.saisieFacture');
+
+Route::get('/courriers/{numCour}/saisie-facture-modal', [CourierSanteIndivController::class, 'saisieFactureModal'])
+    ->name('courriers.saisie-facture-modal');
+
+Route::get('/courriers/{numCour}/saisie-form', [CourierSanteIndivController::class, 'getSaisieForm'])->name('courriers.saisieForm');
+
+// Routes pour courriers (ajoutez à la fin de web.php, dans le groupe web/auth si vous en avez)
+Route::get('/courriers', [CourierSanteIndivController::class, 'index'])->name('courriers.index');
+Route::get('/courriers/create', [CourierSanteIndivController::class, 'create'])->name('courriers.create');
+Route::post('/courriers', [CourierSanteIndivController::class, 'store'])->name('courriers.store');
+Route::get('/courriers/{numCour}/print-fiche', [CourierSanteIndivController::class, 'printFiche'])->name('courriers.printFiche');
+Route::get('/courriers/{numCour}/saisie-facture', [CourierSanteIndivController::class, 'saisieFactureModal'])->name('courriers.saisieFacture');
+
+ Route::get('/courriers', [CourierSanteIndivController::class, 'index'])->name('courriers.index');
+    Route::get('/courriers/create', [CourierSanteIndivController::class, 'create'])->name('courriers.create');
+    Route::post('/courriers', [CourierSanteIndivController::class, 'store'])->name('courriers.store');
+
+
+Route::post('/courriers/store-ligne-suivi', [CourierSanteIndivController::class, 'storeLigneSuivi'])->name('courriers.storeLigneSuivi');
+
+
+Route::get('/courriers/instance', [CourierSanteIndivController::class, 'indexCourriersInstance'])->name('courriers.instance');
+
+
+Route::get('/factures', [FactureController::class, 'index'])->name('factures.index');
+
+
+ Route::get('/factures/listing', [FactureController::class, 'index'])
+        ->name('factures.listing');
+
+
+
+
+    // Routes pour LigneSuiviController (gardez vos existantes, mais corrigez si conflictuelles)
 Route::get('/ligne-suivi', [LigneSuiviController::class, 'index'])->name('ligne_suivi.index');
+Route::post('/ligne-suivi', [LigneSuiviController::class, 'store'])->name('ligne_suivi.store'); // Utilisez LigneSuiviController ici, pas Courier
+Route::put('/ligne_suivi/{id}', [LigneSuiviController::class, 'update'])->name('ligne_suivi.update');
+Route::put('/ligne_suivi/{id}/traiter', [LigneSuiviController::class, 'traiter'])->name('ligne_suivi.traiter');
+Route::post('/ligne_suivi/{id}/rejeter', [LigneSuiviController::class, 'rejeter'])->name('ligne_suivi.rejeter');
+Route::put('/ligne_suivi/{id}/cloturer', [LigneSuiviController::class, 'cloturer'])->name('ligne_suivi.cloturer');
+Route::post('/ligne_suivi/valider', [LigneSuiviController::class, 'valider'])->name('ligne_suivi.valider');
+Route::get('/ligne_suivi/regler/{id}', [LigneSuiviController::class, 'showReglementForm'])->name('ligne_suivi.regler.form');
+Route::post('/ligne_suivi/regler/{id}', [LigneSuiviController::class, 'regler'])->name('ligne_suivi.regler');
 
-// Enregistrement d'une nouvelle ligne de facture
-Route::post('/ligne-suivi', [LigneSuiviController::class, 'store'])->name('ligne_suivi.store');
-// Chargement du modal d'édition via AJAX (si utilisé)
 Route::get('/ligne-suivi/edit-modal', [LigneSuiviController::class, 'editModal'])->name('ligne_suivi.editModal');
 Route::put('/ligne-suivi/{id}', [LigneSuiviController::class, 'update'])->name('ligne_suivi.update');
 
+// web.php
+Route::get('/ligne_suivi/regler/{id}', [LigneSuiviController::class, 'showReglementForm'])->name('ligne_suivi.regler.form');
+Route::post('/ligne_suivi/regler/{id}', [LigneSuiviController::class, 'regler'])->name('ligne_suivi.regler');
 
 
 
-Route::resource('ligne_suivi', LigneSuiviController::class)->only(['index', 'store', 'show', 'update']);
+// Routes pour CourierSanteIndivController (nouvelles/corrigées – remplacez les doublons)
+Route::get('/courriers', [CourierSanteIndivController::class, 'index'])->name('courriers.index');
+Route::get('/courriers/create', [CourierSanteIndivController::class, 'create'])->name('courriers.create');
+Route::post('/courriers', [CourierSanteIndivController::class, 'store'])->name('courriers.store');
 
-// Si vous avez besoin des autres routes
+// Route pour imprimer la fiche (ajustée pour cohérence)
+Route::get('/courriers/{numCour}/print-fiche', [CourierSanteIndivController::class, 'printFiche'])->name('courriers.printFiche');
+
+// Route pour charger le modal saisie facture via AJAX (GET)
+Route::get('/courriers/{numCour}/saisie-facture-modal', [CourierSanteIndivController::class, 'saisieFactureModal'])->name('courriers.saisie-facture-modal');
+
+
 Route::get('/users/create', [UserController::class, 'create'])->name('users.create');
 Route::get('/users/{id}/edit', [UserController::class, 'edit'])->name('users.edit');
 
@@ -87,4 +159,11 @@ Route::put('/gestion-utilisateurs/{id}', [UserController::class, 'update'])->nam
 Route::patch('/users/{id}/activer', [UserController::class, 'activate'])->name('users.activate');
 Route::patch('/users/{id}/desactiver', [UserController::class, 'deactivate'])->name('users.deactivate');
 
+
+
+
+
+Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+Route::get('/dashboard/data', [DashboardController::class, 'getData'])->name('dashboard.data');
+Route::get('/dashboard/data', [PageController::class, 'getDashboardDataAjax'])->name('dashboard.data');
 });
