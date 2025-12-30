@@ -16,7 +16,7 @@ return [
     |
     */
 
-    'default' => env('DB_CONNECTION', 'sqlite'),
+    'default' => env('DB_CONNECTION', 'mysql'),
 
     /*
     |--------------------------------------------------------------------------
@@ -129,7 +129,11 @@ return [
     'prefix' => '',
     'prefix_indexes' => true,
     'encrypt' => env('DB_ENCRYPT', 'yes'),
-    'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', true),
+ 'options' => [
+        PDO::ATTR_STRINGIFY_FETCHES => true,
+        PDO::SQLSRV_ATTR_FETCHES_NUMERIC_TYPE => false,
+    ],
+        'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', true),
 ],
 
 

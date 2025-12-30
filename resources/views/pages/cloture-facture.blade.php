@@ -11,7 +11,7 @@
             <button type="button" onclick="closeClotureModal()" class="text-gray-500 hover:text-red-600 text-xl font-bold">&times;</button>
         </div>
 
-       <form method="POST" action="{{ route('ligne_suivi.cloturer', $facture->Id_Ligne) }}"class="space-y-4">
+       <form method="POST" id="clotureForm" class="space-y-4">
             @csrf
     @method('PUT')
 
@@ -44,12 +44,16 @@
             <div class="space-y-3">
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Assuré / Prestataire</label>
-                    <input type="text" id="cloture_assure" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm" readonly>
+                    <input type="text" id="cloture_assure" class="w-full border border-gray-300 rounded px-3 py-2
+                  bg-gray-200 text-gray-500
+                  cursor-not-allowed select-none focus:outline-none" readonly>
                 </div>
 
                 <div>
                     <label class="block text-sm font-medium text-gray-700">Date de clôture</label>
-                    <input type="text" value="{{ now()->format('d/m/Y') }}" class="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm" readonly>
+                    <input type="text" value="{{ now()->format('d/m/Y') }}" class="w-full border border-gray-300 rounded px-3 py-2
+                  bg-gray-200 text-gray-500
+                  cursor-not-allowed select-none focus:outline-none" readonly>
                 </div>
             </div>
 
@@ -85,7 +89,11 @@ function openClotureModal(button) {
         reference: button.dataset.reference,
         assure: button.dataset.assure
     };
-
+   // Récupérer l'ID du bouton
+       const id = button.dataset.ref;  // Utilisez 'ref' comme pour le rejet
+       console.log('ID du bouton cliqué pour clôture:', id);
+  const form = document.getElementById('clotureForm');
+       form.action = `/ligne_suivi/${id}/cloturer`;
     console.log('Données pour la clôture:', data);
 
     // Remplir les champs

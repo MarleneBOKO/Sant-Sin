@@ -41,7 +41,16 @@
     loadingSaisie: false,
     selectedCourierId: null,
     errorMessage: null,
-
+init() {
+        // Écouter le message de succès provenant du formulaire AJAX
+        window.addEventListener('message', (event) => {
+            if (event.data.action === 'success-save') {
+                this.openSaisieModal = false;
+                // On peut utiliser window.location.reload() pour voir les changements
+                window.location.reload();
+            }
+        });
+    },
     // Méthode pour ouvrir le modal et charger le formulaire via AJAX
     openAndPopulateForm(numCour) {
         this.selectedCourierId = numCour;
@@ -67,6 +76,16 @@
         .then(html => {
             contentDiv.innerHTML = html;
             this.loadingSaisie = false;
+
+            this.$nextTick(() => {
+            $('.select2-souscripteur').select2({
+                placeholder: 'Rechercher un souscripteur...',
+                allowClear: true,
+                width: '100%',
+                // On attache le menu au modal Alpine pour éviter les problèmes de superposition
+                dropdownParent: $('#saisieModalContent')
+            });
+        });
             // Initialiser les scripts du partial si nécessaire (ex. : pour les selects)
             if (typeof initPartialScripts === 'function') {
                 initPartialScripts(); // Optionnel : si vous avez des init JS dans le partial
@@ -92,16 +111,16 @@
 
 
     <!-- Header de la page -->
-    <div class="flex justify-between items-center mb-4">
+    <div class="flex justify-between items-center mb-4 mt-4">
         <h3 class="text-2xl font-semibold">Liste des Courriers Individuels en Instance</h3>
-        <button @click="openCreateModal = true" class="btn btn-success flex items-center gap-2">
+        <button @click="openCreateModal = true" class="bg-green-100 text-green-800 p-4 rounded ">
             <i class="fas fa-plus"></i> Nouveau Dépôt
         </button>
     </div>
 
     <!-- Messages de session -->
     @if(session('success'))
-        <div class="alert alert-success mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded">
+        <div class="bg-green-100 text-green-800 p-4 rounded mb-4">
             <i class="fas fa-check-circle mr-2"></i>{{ session('success') }}
         </div>
     @endif
@@ -270,10 +289,16 @@
                     <legend class="text-primary font-semibold px-2">Réceptionniste <i class="fa fa-user"></i></legend>
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-2">
                         <div>
-                            <label class="block mb-1 font-medium" for="enreg">Date enregistrement</label>
-                            <input type="text" id="enreg" name="enreg"
-                                   value="{{ date('d/m/Y') }}" readonly
-                                   class="w-full border rounded px-3 py-2 bg-gray-100 cursor-not-allowed" />
+                            <label class="block mb-1 font-medium text-gray-700" for="enreg">Date enregistrement</label>
+                            <input type="text"
+                                id="enreg"
+                                name="enreg"
+                                value="{{ date('d/m/Y') }}"
+                                readonly
+                                tabindex="-1"
+                                class="w-full border border-gray-300 rounded px-3 py-2
+                                        bg-gray-200 text-gray-500
+                                        cursor-not-allowed select-none focus:outline-none" />
                         </div>
                         <div>
                             <label class="block mb-1 font-medium" for="nometarec">Nombre d'état(s) reçu <span class="text-red-500">*</span></label>

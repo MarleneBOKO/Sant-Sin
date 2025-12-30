@@ -159,80 +159,93 @@ public function store(Request $request)
 
 
 public function printFiche($numCour)
-    {
-        try {
-            $courrier = CourierSanteIndiv::findOrFail($numCour);
+{
+    try {
+        $courrier = CourierSanteIndiv::findOrFail($numCour);
 
-            // Création du PDF avec TCPDF (orientation portrait, unités mm, format A4)
-            $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
-            $pdf->SetCreator('NSIA Assurances');
-            $pdf->SetAuthor('Système de Gestion Courriers');
-            $pdf->SetTitle('Fiche de Dépôt - ' . $courrier->CodeCour);
-            $pdf->SetSubject('Fiche de dépôt courrier santé individuel');
-            $pdf->SetMargins(15, 15, 15); // Marges
-            $pdf->SetAutoPageBreak(true, 15);
-            $pdf->AddPage();
+        // Création du PDF avec TCPDF (orientation portrait, unités mm, format A4)
+        $pdf = new TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
+        $pdf->SetCreator('NSIA Assurances');
+        $pdf->SetAuthor('Système de Gestion Courriers');
+        $pdf->SetTitle('Fiche de Dépôt - ' . $courrier->CodeCour);
+        $pdf->SetSubject('Fiche de dépôt courrier santé individuel');
+        $pdf->SetMargins(15, 15, 15); // Marges
+        $pdf->SetAutoPageBreak(true, 15);
+        $pdf->AddPage();
 
-            // Police par défaut (TCPDF inclut DejaVu ; si besoin custom, voir ci-dessous)
-            $pdf->SetFont('dejavusans', '', 14); // 'dejavusans' est intégré à TCPDF pour UTF-8
-
-            $h = 7;
-            $retrait = str_repeat(' ', 6); // Équivalent à "      " (6 espaces)
-            $retrait3 = str_repeat(' ', 29);
-
-            // Entête
-            $pdf->Cell(0, 10, 'Fiche de dépôt', 0, 1, 'C');
-            $pdf->Ln(5);
-
-            // Données du dépôt (gestion des nuls)
-            $nomPrenomDeposant = strtoupper(($courrier->NomDeposant ?? '') . ' ' . ($courrier->PrenomDeposant ?? ''));
-            $dateDepot = $courrier->DateDepot ? $courrier->DateDepot->format('d/m/Y') : 'N/A';
-            $dateReception = $courrier->datereception ? $courrier->datereception->format('d/m/Y') : 'N/A';
-
-            $pdf->Cell(0, $h, $retrait . 'Ref.Courrier : ' . $courrier->CodeCour, 0, 1, 'L');
-            $pdf->Cell(0, $h, $retrait . 'Date Dépôt : ' . $dateDepot, 0, 1, 'L');
-            $pdf->Cell(0, $h, $retrait . "Nom et prénom du déposant : " . $nomPrenomDeposant, 0, 1, 'L');
-            $pdf->Cell(0, $h, $retrait . "Structure : " . strtoupper($courrier->structure ?? ''), 0, 1, 'L');
-            $pdf->Cell(0, $h, $retrait . "Nombre d'état(s) : " . ($courrier->nbreetatdepot ?? 0), 0, 1, 'L');
-            $pdf->Cell(0, $h, $retrait . "Pour le compte de : " . ($courrier->Comptede ?? ''), 0, 1, 'L');
-            $pdf->Cell(0, $h, $retrait . "Motif : " . ($courrier->motif ?? ''), 0, 1, 'L');
-            $pdf->Ln(8);
-
-            // Section Réceptionniste
-            $pdf->SetFont('dejavusans', 'B', 13);
-            $pdf->Cell(0, 10, 'RECEPTIONNISTE', 0, 1, 'C');
-            $pdf->Ln(8);
-
-            $pdf->SetFont('dejavusans', '', 12);
-            $pdf->Cell(0, $h, $retrait . "Date : " . $dateReception, 0, 1, 'L');
-            $pdf->Cell(0, $h, $retrait . "Nom et prénom : " . strtoupper($courrier->Receptioniste ?? ''), 0, 1, 'L');
-            $pdf->Cell(0, $h, $retrait . "Nombre d'état(s) Reçu(s): " . ($courrier->nbrerecu ?? 0), 0, 1, 'L');
-            $pdf->Ln(8);
-
-            // Signature (ligne unique)
-            $pdf->Cell(0, $h, $retrait3 . "Signature du déposant " . $retrait3 . " Pour la NSIA Assurances", 0, 1, 'L');
-            $pdf->Ln(40);
-
-            // Pied de page (TCPDF gère automatiquement les pages ; {nb} pour total)
-            $pdf->SetFont('dejavusans', 'I', 8);
-            $pdf->SetY(-30);
-            $pdf->Cell(0, 10, 'Edité le : ' . now()->format('d/m/Y'), 0, 1, 'C');
-            $pdf->Cell(0, 10, 'Page ' . $pdf->getPage() . '/{nb}', 0, 0, 'C');
-
-            // Retourner le PDF
-            $filename = 'fiche_depot_' . $numCour . '.pdf';
-            return response($pdf->Output($filename, 'S'), 200) // 'S' pour string
-                ->header('Content-Type', 'application/pdf')
-                ->header('Content-Disposition', 'inline; filename="' . $filename . '"');
-
-        } catch (\Exception $e) {
-            Log::error('Erreur génération PDF TCPDF : ' . $e->getMessage(), [
-                'numCour' => $numCour,
-                'trace' => $e->getTraceAsString()
-            ]);
-            return response()->json(['error' => 'Erreur PDF : ' . $e->getMessage()], 500);
+        // Ajouter l'entête (image) - Assurez-vous que 'en-tete.png' est dans public/images/
+        $imagePath = public_path('images/en-tete.png');
+        if (file_exists($imagePath)) {
+            $pdf->Image($imagePath, 5, 5, 200, 35); // Position x=5, y=5, largeur=200, hauteur=35
+        } else {
+            // Fallback si l'image n'existe pas
+            $pdf->SetFont('dejavusans', 'B', 16);
+            $pdf->Cell(0, 10, 'NSIA Assurances - Entête Manquante', 0, 1, 'C');
         }
+
+        // Saut de ligne après l'entête (comme dans votre code original)
+        $pdf->Ln(40);
+
+        // Police par défaut
+        $pdf->SetFont('dejavusans', '', 14);
+
+        $h = 7;
+        $retrait = str_repeat(' ', 6); // 6 espaces
+        $retrait3 = str_repeat(' ', 29); // 29 espaces
+
+        // Cellule pour le titre (optionnel, comme dans votre code original)
+        $pdf->Ln(5);
+
+        // Données du dépôt
+        $nomPrenomDeposant = strtoupper(($courrier->NomDeposant ?? '') . ' ' . ($courrier->PrenomDeposant ?? ''));
+        $dateDepot = $courrier->DateDepot ? $courrier->DateDepot->format('d/m/Y') : 'N/A';
+        $dateReception = $courrier->datereception ? $courrier->datereception->format('d/m/Y') : 'N/A';
+
+        $pdf->SetFont('dejavusans', '', 10);
+        $pdf->Cell(0, $h, $retrait . 'Ref.Courrier : ' . $courrier->CodeCour, 0, 1, 'L');
+        $pdf->Cell(0, $h, $retrait . 'Date Dépôt : ' . $dateDepot, 0, 1, 'L');
+        $pdf->Cell(0, $h, $retrait . "Nom et prénom du déposant : " . $nomPrenomDeposant, 0, 1, 'L');
+        $pdf->Cell(0, $h, $retrait . "Structure : " . strtoupper($courrier->structure ?? ''), 0, 1, 'L');
+        $pdf->Cell(0, $h, $retrait . "Nombre d'état(s) : " . ($courrier->nbreetatdepot ?? 0), 0, 1, 'L');
+        $pdf->Cell(0, $h, $retrait . "Pour le compte de : " . ($courrier->Comptede ?? ''), 0, 1, 'L');
+        $pdf->Cell(0, $h, $retrait . "Motif : " . ($courrier->motif ?? ''), 0, 1, 'L');
+        $pdf->Ln(8);
+
+        // Section Réceptionniste
+        $pdf->SetFont('dejavusans', 'B', 13);
+        $pdf->Cell(0, 10, 'RECEPTIONNISTE', 0, 1, 'C');
+        $pdf->Ln(8);
+
+        $pdf->SetFont('dejavusans', '', 10); // Taille réduite de 12 à 10
+        $pdf->Cell(0, $h, $retrait . "Date : " . $dateReception, 0, 1, 'L');
+        $pdf->Cell(0, $h, $retrait . "Nom et prénom : " . strtoupper($courrier->Receptioniste ?? ''), 0, 1, 'L');
+        $pdf->Cell(0, $h, $retrait . "Nombre d'état(s) Reçu(s): " . ($courrier->nbrerecu ?? 0), 0, 1, 'L');
+        $pdf->Ln(8);
+
+        // Signature
+        $pdf->Cell(0, $h, $retrait3 . "Signature du déposant " . $retrait3 . " Pour la NSIA Assurances", 0, 1, 'L');
+        $pdf->Ln(20); // Espace réduit de 40 à 20 mm pour rapprocher du pied de page
+
+        // Pied de page
+        $pdf->SetFont('dejavusans', 'I', 8);
+        $pdf->SetY(-30);
+        $pdf->Cell(0, 10, 'Edité le : ' . now()->format('d/m/Y'), 0, 1, 'C');
+
+        // Retourner le PDF
+        $filename = 'fiche_depot_' . $numCour . '.pdf';
+        return response($pdf->Output($filename, 'S'), 200)
+            ->header('Content-Type', 'application/pdf')
+            ->header('Content-Disposition', 'inline; filename="' . $filename . '"');
+
+    } catch (\Exception $e) {
+        Log::error('Erreur génération PDF TCPDF : ' . $e->getMessage(), [
+            'numCour' => $numCour,
+            'trace' => $e->getTraceAsString()
+        ]);
+        return response()->json(['error' => 'Erreur PDF : ' . $e->getMessage()], 500);
     }
+}
+
 
 
  public function saisieFactureModal($numCour)
@@ -554,7 +567,7 @@ public function storeLigneSuivi(Request $request)
                 'Id_Ligne' => $insertedRow->Id_Ligne,
                 'Reference_Facture' => $insertedRow->Reference_Facture,
                 'Nom_Assure' => $insertedRow->Nom_Assure,
-                'Code_partenaire' => $insertedRow->Code_partenaire, // Corrigé
+               'Code_partenaire' => $insertedRow->{'Code_Partenaire'} ?? $insertedRow->Code_partenaire ?? 'Non défini',  // Accès sécurisé avec casse
                 'Annee_Facture' => $insertedRow->Annee_Facture,
                 'Numero_Reception' => $insertedRow->Numero_Reception,
                 'CodeCour' => $insertedRow->CodeCour,

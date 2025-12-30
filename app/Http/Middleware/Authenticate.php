@@ -18,6 +18,6 @@ class Authenticate
             return $next($request);
         } else {
             return redirect('login');
-        }
+        }   
     }
 }

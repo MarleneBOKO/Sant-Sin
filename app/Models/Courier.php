@@ -6,16 +6,17 @@ use Illuminate\Database\Eloquent\Model;
 
 class Courier extends Model
 {
+    protected $table = 'courrier';  // Nom de la table
+    protected $primaryKey = 'NumCour';  // Clé primaire
+    public $timestamps = false;  // Pas de timestamps
 
-
-     protected $table = 'courrier'; // Nom de la table
-    protected $primaryKey = 'NumCour';
-
-    protected $keyType = 'string'; // Ou 'int' selon les types
     protected $fillable = [
-        'NumCour', 'CodeCour', 'RefCour', 'DateEdit', 'DateRecep', 'DateEnreg',
-        'Image', 'Chemin', 'CodeNat', 'CodeType', 'Civilite', 'Nom', 'Prenom',
-        'Objet', 'expediteur', 'usersaisie', 'Code_Civilite', 'annee', 'telephone'
+        'NumCour', 'RefCour', 'Objet', 'expediteur', 'DateRecep', 'DateEnreg', 'DateClotureEstime', 'annee', 'codecour', 'statut', 'nbr'
     ];
+    protected $casts = [
+    'DateRecep' => 'datetime',
+    'DateEnreg' => 'datetime',
+    'DateClotureEstime' => 'datetime',
+];
 
 }

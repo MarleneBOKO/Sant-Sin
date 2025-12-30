@@ -16,7 +16,7 @@ use App\Models\parametres;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
-
+use Illuminate\Http\Request;
 use App\Models\CourierSanteIndiv;
 
 
@@ -53,12 +53,7 @@ public function loadPage($layout = 'side-menu', $theme = 'light', $pageName = 'd
     $second_page_name = null;
     $third_page_name = null;
 
-  $side_menu = $this->sideMenu() ?? [];
-        $activeMenu = $this->activeMenu($layout, $pageName) ?? [
-            'first_page_name' => $pageName,
-            'second_page_name' => '',
-            'third_page_name' => ''
-        ];
+
         $top_menu = $this->topMenu() ?? [];
         $simple_menu = $this->simpleMenu() ?? [];
 
@@ -120,14 +115,7 @@ if ($pageName === 'gestion-utilisateurs') {
         $users = User::with(['service', 'profil'])->paginate(10);
     $services = Service::all(); // <-- Ajouté
     $profils = Profil::all();   // <-- Ajouté
-      $side_menu = $this->sideMenu() ?? [];
-        $activeMenu = $this->activeMenu($layout, $pageName) ?? [
-            'first_page_name' => $pageName,
-            'second_page_name' => '',
-            'third_page_name' => ''
-        ];
-        $top_menu = $this->topMenu() ?? [];
-        $simple_menu = $this->simpleMenu() ?? [];
+
         $fakers = [];
         $annees = [];
     return view('pages.' . $pageName, [
@@ -147,18 +135,29 @@ if ($pageName === 'gestion-utilisateurs') {
     ]);
 }
 
+  if ($pageName === 'change-password') {
+
+        $fakers = [];
+        $annees = [];
+        return view('pages.' . $pageName, [
+            'top_menu' => $top_menu,
+            'side_menu' => $side_menu,
+            'simple_menu' => $simple_menu,
+            'first_page_name' => $activeMenu['first_page_name'],
+            'second_page_name' => $activeMenu['second_page_name'],
+            'third_page_name' => $activeMenu['third_page_name'],
+            'page_name' => $pageName,
+            'theme' => $theme,
+            'layout' => 'side-menu',
+            'fakers' => $fakers,
+            'isFirstTime' => session('isFirstTime', false), // Si nécessaire
+        ]);
+    }
 
 
    if ($pageName === 'depot-individuel') {
     $courriers = \App\Models\CourierSanteIndiv::orderBy('datereception', 'desc')->paginate(10);
-          $side_menu = $this->sideMenu() ?? [];
-        $activeMenu = $this->activeMenu($layout, $pageName) ?? [
-            'first_page_name' => $pageName,
-            'second_page_name' => '',
-            'third_page_name' => ''
-        ];
-        $top_menu = $this->topMenu() ?? [];
-        $simple_menu = $this->simpleMenu() ?? [];
+
         $fakers = [];
         $annees = [];
          return view('pages.' . $pageName, [
@@ -179,16 +178,10 @@ if ($pageName === 'gestion-utilisateurs') {
 
 
 
-if ($pageName === 'gestion-profils') {
+
+    if ($pageName === 'gestion-profils') {
    $profils = Profil::paginate(10);
-      $side_menu = $this->sideMenu() ?? [];
-        $activeMenu = $this->activeMenu($layout, $pageName) ?? [
-            'first_page_name' => $pageName,
-            'second_page_name' => '',
-            'third_page_name' => ''
-        ];
-        $top_menu = $this->topMenu() ?? [];
-        $simple_menu = $this->simpleMenu() ?? [];
+
         $fakers = [];
         $annees = [];
     return view('pages.' . $pageName, [
@@ -204,120 +197,133 @@ if ($pageName === 'gestion-profils') {
         'profils' => $profils,   // <-- Transmission de la variable
         'fakers' => $fakers,
     ]);
+
 }
+
 if ($pageName === 'gestion-factures') {
-    $user = auth()->user();
-    $profil_id = $user->profil->id ?? null;
+       $user = auth()->user();
+       $profilCode = $user->profil->code_profil ?? null;  // Utilise le code_profil au lieu de l'id
 
-    // Récupérer le paramètre de recherche depuis la requête GET
-    $search = request()->get('search', '');
+       // Récupérer le paramètre de recherche depuis la requête GET
+       $search = request()->get('search', '');
 
-    $side_menu = $this->sideMenu() ?? [];
-    $activeMenu = $this->activeMenu($layout, $pageName) ?? [
-        'first_page_name' => $pageName,
-        'second_page_name' => '',
-        'third_page_name' => ''
-    ];
-    $top_menu = $this->topMenu() ?? [];
-    $simple_menu = $this->simpleMenu() ?? [];
-    $fakers = [];
-    $annees = [];
+       $fakers = [];
+       $annees = [];
 
-    // Début de la requête commune avec jointure pour type
-    $query = LigneSuivi::whereNotNull('Date_Enregistrement')
-        ->leftJoin('partenaires', 'Ligne_Suivi.Code_partenaire', '=', 'partenaires.id') // Jointure pour accéder au type
-        ->with(['partenaire']); // Utilise la nouvelle relation unifiée
+       // Début de la requête commune avec jointure pour type
+       $query = LigneSuivi::whereNotNull('Date_Enregistrement')
+           ->leftJoin('partenaires', 'Ligne_Suivi.Code_Partenaire', '=', 'partenaires.id') // Jointure pour accéder au type
+           ->with(['prestataire', 'souscripteur']); // Charge les relations prestataire et souscripteur
 
-    // 🔀 Filtrage selon le profil (adapté pour Code_partenaire et type)
-    if ($profil_id == 4) {
-        // Régleur Sinistre Individuel : Nom_Assure non null et partenaire de type 'souscripteur' ou null
-        $query->whereNotNull('Nom_Assure')
-              ->where(function ($q) {
-                  $q->whereNull('Ligne_Suivi.Code_partenaire')
-                    ->orWhere('partenaires.type', 'souscripteur');
-              });
-    } elseif ($profil_id == 8) {
-        // Régleur Sinistre Tiers Payant : partenaire de type 'prestataire'
-        $query->whereNotNull('Ligne_Suivi.Code_partenaire')
-              ->where('partenaires.type', 'prestataire');
-    } elseif (in_array($profil_id, [3, 5])) {
-        // Régleur Sinistre ou Admin → voir les deux types
-        $query->where(function ($q) {
-            $q->where(function ($sub) {
-                $sub->whereNotNull('Nom_Assure')
-                    ->where(function ($inner) {
-                        $inner->whereNull('Ligne_Suivi.Code_partenaire')
-                              ->orWhere('partenaires.type', 'souscripteur');
-                    });
-            })->orWhere(function ($sub) {
-                $sub->whereNotNull('Ligne_Suivi.Code_partenaire')
-                    ->where('partenaires.type', 'prestataire');
-            });
-        });
-    }
+       // 🔀 Filtrage selon le code_profil (adapté pour Code_Partenaire et type)
+       if (in_array($profilCode, ['RSI', 'RRSI'])) {
+           // Régleur Sinistre Individuel / Responsable : Nom_Assure non null et partenaire de type 'souscripteur' ou null
+           $query->whereNotNull('Nom_Assure')
+                 ->where(function ($q) {
+                     $q->whereNull('Ligne_Suivi.Code_Partenaire')
+                       ->orWhere('partenaires.type', 'souscripteur');
+                 });
+       } elseif (in_array($profilCode, ['RSTP', 'RRSTP'])) {
+           // Régleur Sinistre Tiers Payant / Responsable : partenaire de type 'prestataire'
+           $query->whereNotNull('Ligne_Suivi.Code_Partenaire')
+                 ->where('partenaires.type', 'prestataire');
+       } elseif (in_array($profilCode, ['RSIN', 'ADMIN'])) {
+           // Régleur Sinistre ou Admin → voir les deux types
+           $query->where(function ($q) {
+               $q->where(function ($sub) {
+                   $sub->whereNotNull('Nom_Assure')
+                       ->where(function ($inner) {
+                           $inner->whereNull('Ligne_Suivi.Code_Partenaire')
+                                 ->orWhere('partenaires.type', 'souscripteur');
+                       });
+               })->orWhere(function ($sub) {
+                   $sub->whereNotNull('Ligne_Suivi.Code_Partenaire')
+                       ->where('partenaires.type', 'prestataire');
+               });
+           });
+       }
 
-    if (!empty($search)) {
-        $query->where(function ($q) use ($search) {
-            $q->where('Nom_Assure', 'LIKE', '%' . $search . '%')
-              ->orWhere('Reference_Facture', 'LIKE', '%' . $search . '%')
-              ->orWhere('Numero_Reception', 'LIKE', '%' . $search . '%')
-              ->orWhereHas('partenaire', function ($subQuery) use ($search) {
-                  $subQuery->where('nom', 'LIKE', '%' . $search . '%'); // Recherche dans partenaire.nom (quel que soit le type)
-              });
-        });
-    }
+       if (!empty($search)) {
+           $query->where(function ($q) use ($search) {
+               $q->where('Nom_Assure', 'LIKE', '%' . $search . '%')
+                 ->orWhere('Reference_Facture', 'LIKE', '%' . $search . '%')
+                 ->orWhere('Numero_Reception', 'LIKE', '%' . $search . '%')
+                 ->orWhereHas('partenaire', function ($subQuery) use ($search) {
+                     $subQuery->where('nom', 'LIKE', '%' . $search . '%'); // Recherche dans partenaire.nom (quel que soit le type)
+                 });
+           });
+       }
 
-    $query->orderBy('Date_Debut', 'desc');
+       $query->orderBy('Date_Enregistrement', 'desc');  // Modifié : Tri par date de création (descendant)
 
-    // Récupération des factures (sans filtrage sur 'rejete')
-    $factures = $query->paginate(10);
+       // Récupération des factures (sans filtrage sur 'rejete')
+       $factures = $query->paginate(10);
 
-    $souscripteurs = Partenaire::souscripteurs()->orderBy('nom')->get(); // Assure-toi que cette méthode existe ou remplace par where('type', 'souscripteur')
-    $prestataires = Partenaire::prestataires()->orderBy('nom')->get(); // Assure-toi que cette méthode existe ou remplace par where('type', 'prestataire')
+       // 🔥 LOGS POUR DÉBOGUER
+       \Log::info('=== DÉBOGAGE GESTION-FACTURES ===', [
+           'profilCode' => $profilCode,
+           'factures_count' => $factures->count(),
+           'query_sql' => $query->toSql(),
+           'query_bindings' => $query->getBindings(),
+       ]);
 
-    $moisList = DB::table('parametres')
-        ->where('typaram', 'MoisFacture')
-        ->orderByDesc('codtyparam')
-        ->select('codtyparam as Id_mois', 'libelleparam as libelle_mois')
-        ->get();
+       if ($factures->count() > 0) {
+           $firstFacture = $factures->first();
+           \Log::info('Première facture chargée', [
+               'Id_Ligne' => $firstFacture->Id_Ligne,
+               'Code_Partenaire' => $firstFacture->Code_Partenaire,
+               'Nom_Assure' => $firstFacture->Nom_Assure,
+               'Reference_Facture' => $firstFacture->Reference_Facture,
+               'prestataire_loaded' => $firstFacture->relationLoaded('prestataire'),
+               'prestataire_data' => $firstFacture->prestataire ? $firstFacture->prestataire->toArray() : null,
+               'souscripteur_loaded' => $firstFacture->relationLoaded('souscripteur'),
+               'souscripteur_data' => $firstFacture->souscripteur ? $firstFacture->souscripteur->toArray() : null,
+           ]);
+       }
 
-    $annees = DB::table('parametres')
-        ->where('typaram', 'AnneFacture')
-        ->orderByDesc('codtyparam')
-        ->select('codtyparam as Id_annee', 'libelleparam as libelle_annee')
-        ->get();
+       $souscripteurs = Partenaire::souscripteurs()->orderBy('nom')->get(); // Assure-toi que cette méthode existe ou remplace par where('type', 'souscripteur')
+       $prestataires = Partenaire::prestataires()->orderBy('nom')->get(); // Assure-toi que cette méthode existe ou remplace par where('type', 'prestataire')
 
-    return view('pages.' . $pageName, [
-        'top_menu' => $top_menu,
-        'side_menu' => $side_menu,
-        'simple_menu' => $simple_menu,
-        'first_page_name' => $activeMenu['first_page_name'],
-        'second_page_name' => $activeMenu['second_page_name'],
-        'third_page_name' => $activeMenu['third_page_name'],
-        'page_name' => $pageName,
-        'theme' => $theme,
-        'layout' => $layout,
-        'factures' => $factures,
-        'souscripteurs' => $souscripteurs,
-        'prestataires' => $prestataires,
-        'moisList' => $moisList,
-        'annees' => $annees,
-        'fakers' => $fakers,
-        'profil_id' => $profil_id, // utile dans la vue si besoin
-    ]);
-}
+       $moisList = DB::table('parametres')
+           ->where('typaram', 'MoisFacture')
+           ->orderByDesc('codtyparam')
+           ->select('codtyparam as Id_mois', 'libelleparam as libelle_mois')
+           ->get();
+
+       $annees = DB::table('parametres')
+           ->where('typaram', 'AnneFacture')
+           ->orderByDesc('codtyparam')
+           ->select('codtyparam as Id_annee', 'libelleparam as libelle_annee')
+           ->get();
+
+       return view('pages.' . $pageName, [
+           'top_menu' => $top_menu,
+           'side_menu' => $side_menu,
+           'simple_menu' => $simple_menu,
+           'first_page_name' => $activeMenu['first_page_name'],
+           'second_page_name' => $activeMenu['second_page_name'],
+           'third_page_name' => $activeMenu['third_page_name'],
+           'page_name' => $pageName,
+           'theme' => $theme,
+           'layout' => $layout,
+           'factures' => $factures,
+           'souscripteurs' => $souscripteurs,
+           'prestataires' => $prestataires,
+           'moisList' => $moisList,
+           'annees' => $annees,
+           'fakers' => $fakers,
+           'profilCode' => $profilCode,  // Changé de 'profil_id' à 'profilCode' pour cohérence
+       ]);
+   }
+
 
 
    if ($pageName === 'listing-reporting') {
-        $factures = collect([]); // Collection vide par défaut
-         $side_menu = $this->sideMenu() ?? [];
-            $activeMenu = $this->activeMenu($layout, $pageName) ?? [
-                'first_page_name' => $pageName,
-                'second_page_name' => '',
-                'third_page_name' => ''
-            ];
-            $top_menu = $this->topMenu() ?? [];
-            $simple_menu = $this->simpleMenu() ?? [];
+       $factures = Facture::query()
+        // ... vos conditions/filtres ici ...
+        ->paginate(10)
+        ->appends(request()->query());  
+
             $fakers = [];
             $annees = [];
     return view('pages.' . $pageName, [
@@ -334,6 +340,482 @@ if ($pageName === 'gestion-factures') {
         'fakers' => $fakers,
     ]);
 }
+
+
+if ($pageName === 'correction-facture') {
+    $user = auth()->user();
+    $profilCode = $user->profil->code_profil ?? null;
+
+    // 🔥 MODIFIÉ : Autoriser l'admin en plus des responsables
+    if (!in_array($profilCode, ['RRSI', 'RRSTP', 'ADMIN'])) {
+        abort(403, 'Accès refusé. Cette page est réservée aux responsables et admins.');
+    }
+
+    $fakers = [];
+    $annees = [];
+
+    // Requête selon le profil (basée sur le code PHP original)
+    $query = LigneSuivi::whereNotNull('Date_Enregistrement')
+        ->leftJoin('partenaires', 'Ligne_Suivi.Code_Partenaire', '=', 'partenaires.id')
+        ->with(['prestataire', 'souscripteur']);
+
+    if ($profilCode === 'RRSI') {
+        // Factures individuelles : Code_Partenaire non null, type souscripteur, montant rejeté < 0
+        $query->whereNotNull('Ligne_Suivi.Code_Partenaire')
+              ->where('partenaires.type', 'souscripteur')
+              ->whereRaw('(ISNULL(Montant_Ligne, 0) - ISNULL(Montant_Reglement, 0)) < 0');
+    } elseif ($profilCode === 'RRSTP') {
+        // Factures Tiers-Payant : Code_Partenaire non null, type prestataire, statut != 4, rejete = 0, montant rejeté < 0
+        $query->whereNotNull('Ligne_Suivi.Code_Partenaire')
+              ->where('partenaires.type', 'prestataire')
+              ->whereNotIn('Statut_Ligne', [4])
+              ->where('rejete', 0)
+              ->whereRaw('(ISNULL(Montant_Ligne, 0) - ISNULL(Montant_Reglement, 0)) < 0');
+    } elseif ($profilCode === 'ADMIN') {
+        // 🔥 AJOUTÉ : Admin voit tout : Code_Partenaire non null, montant rejeté < 0 (sans filtre par type)
+        $query->whereNotNull('Ligne_Suivi.Code_Partenaire')
+              ->whereRaw('(ISNULL(Montant_Ligne, 0) - ISNULL(Montant_Reglement, 0)) < 0');
+    }
+
+    $query->orderBy('Date_Enregistrement', 'desc');
+    $factures = $query->get();
+    // 🔥 LOGS POUR DÉBOGUER
+    \Log::info('=== DÉBOGAGE CORRECTION-FACTURE ===', [
+        'profilCode' => $profilCode,
+        'factures_count' => $factures->count(),
+        'query_sql' => $query->toSql(),
+        'query_bindings' => $query->getBindings(),
+    ]);
+
+    if ($factures->count() > 0) {
+        $firstFacture = $factures->first();
+        \Log::info('Première facture correction', [
+            'Id_Ligne' => $firstFacture->Id_Ligne,
+            'Code_Partenaire' => $firstFacture->Code_Partenaire,
+            'Nom_Assure' => $firstFacture->Nom_Assure,
+            'Montant_Ligne' => $firstFacture->Montant_Ligne,
+            'Montant_Reglement' => $firstFacture->Montant_Reglement,
+            'rejete' => $firstFacture->rejete,
+            'Statut_Ligne' => $firstFacture->Statut_Ligne,
+        ]);
+    }
+
+    return view('pages.' . $pageName, [
+        'top_menu' => $top_menu,
+        'side_menu' => $side_menu,
+        'simple_menu' => $simple_menu,
+        'first_page_name' => $activeMenu['first_page_name'],
+        'second_page_name' => $activeMenu['second_page_name'],
+        'third_page_name' => $activeMenu['third_page_name'],
+        'page_name' => $pageName,
+        'theme' => $theme,
+        'layout' => $layout,
+        'factures' => $factures,
+        'profilCode' => $profilCode,
+        'fakers' => $fakers,
+    ]);
+}
+
+if ($pageName === 'annulation-facture') {
+    $user = auth()->user();
+    $profilCode = $user->profil->code_profil ?? null;
+
+    // 🔥 MODIFIÉ : Autoriser l'admin
+    if (!in_array($profilCode, ['RRSI', 'RRSTP', 'ADMIN'])) {
+        abort(403, 'Accès refusé. Cette page est réservée aux responsables et admins.');
+    }
+
+    $fakers = [];
+    $annees = [];
+
+    // Requête selon le profil (basée sur le code PHP original : factures non clôturées, non annulées)
+    $query = LigneSuivi::whereNotNull('Date_Enregistrement')
+        ->leftJoin('partenaires', 'Ligne_Suivi.Code_Partenaire', '=', 'partenaires.id')
+        ->with(['prestataire', 'souscripteur']);
+
+    if ($profilCode === 'RRSI') {
+        // Factures individuelles : Code_Partenaire non null, type souscripteur, annuler=0, statut not in (4,8), rejete=0
+        $query->whereNotNull('Ligne_Suivi.Code_Partenaire')
+              ->where('partenaires.type', 'souscripteur')
+              ->whereNotIn('Statut_Ligne', [4, 8])
+              ->where('rejete', 0);
+    } elseif ($profilCode === 'RRSTP') {
+        // Factures Tiers-Payant : Code_Partenaire null, annuler=0, statut not in (4,8), rejete=0
+        $query->whereNotNull('Ligne_Suivi.Code_Partenaire')
+             ->where('partenaires.type', 'prestataire')
+              ->whereNotIn('Statut_Ligne', [4, 8])
+              ->where('rejete', 0);
+    } elseif ($profilCode === 'ADMIN') {
+        // 🔥 AJOUTÉ : Admin voit tout : annuler=0, statut not in (4,8), rejete=0 (sans filtre par type)
+        $query
+              ->whereNotIn('Statut_Ligne', [4, 8])
+              ->where('rejete', 0);
+    }
+
+    $query->orderBy('Date_Enregistrement', 'desc');
+
+
+        $factures = $query->paginate(10);
+
+
+    // 🔥 LOGS POUR DÉBOGUER
+    \Log::info('=== DÉBOGAGE ANNULATION-FACTURE ===', [
+        'profilCode' => $profilCode,
+        'factures_count' => $factures->count(),
+        'query_sql' => $query->toSql(),
+        'query_bindings' => $query->getBindings(),
+    ]);
+
+    if ($factures->count() > 0) {
+        $firstFacture = $factures->first();
+        \Log::info('Première facture annulation', [
+            'Id_Ligne' => $firstFacture->Id_Ligne,
+            'Code_Partenaire' => $firstFacture->Code_Partenaire,
+            'Nom_Assure' => $firstFacture->Nom_Assure,
+            'annuler' => $firstFacture->annuler,
+            'rejete' => $firstFacture->rejete,
+            'Statut_Ligne' => $firstFacture->Statut_Ligne,
+        ]);
+    }
+
+    return view('pages.' . $pageName, [
+        'top_menu' => $top_menu,
+        'side_menu' => $side_menu,
+        'simple_menu' => $simple_menu,
+        'first_page_name' => $activeMenu['first_page_name'],
+        'second_page_name' => $activeMenu['second_page_name'],
+        'third_page_name' => $activeMenu['third_page_name'],
+        'page_name' => $pageName,
+        'theme' => $theme,
+        'layout' => $layout,
+        'factures' => $factures,
+        'profilCode' => $profilCode,
+        'fakers' => $fakers,
+    ]);
+}
+
+if ($pageName === 'situation-prestataire') {
+    $annees = DB::connection('sqlsrv')
+        ->table('Ligne_Suivi')
+        ->whereNotNull('Annee_Facture')
+        ->distinct()
+        ->orderByDesc('Annee_Facture')
+        ->pluck('Annee_Facture')
+        ->take(10);
+
+    // Récupérer les prestataires (partenaires de type 'prestataire')
+    $prestataires = DB::connection('sqlsrv')
+        ->table('partenaires')
+        ->where('type', 'prestataire')
+        ->select('id', 'nom', 'code_type_prestataire', 'coutierG')
+        ->orderBy('nom')
+        ->get();
+
+    return view('pages.' . $pageName, [
+        'top_menu' => $top_menu,
+        'side_menu' => $side_menu,
+        'simple_menu' => $simple_menu,
+        'first_page_name' => $activeMenu['first_page_name'],
+        'second_page_name' => $activeMenu['second_page_name'],
+        'third_page_name' => $activeMenu['third_page_name'],
+        'page_name' => $pageName,
+        'theme' => $theme,
+        'layout' => $layout,
+        'annees' => $annees,
+        'prestataires' => $prestataires,
+        'fakers' => $fakers,
+    ]);
+}
+
+
+
+// 🔥 CONDITION NOUVELLE : Liste des Courriers Santé en Instance (non-traités ou partiels)
+if ($pageName === 'dashboard') {
+    $annee = request()->get('annee', date('Y'));
+
+    $annees = DB::connection('sqlsrv')
+        ->table('Ligne_Suivi')
+        ->whereNotNull('Annee_Facture')
+        ->distinct()
+        ->orderByDesc('Annee_Facture')
+        ->pluck('Annee_Facture')
+        ->take(10);
+
+    try {
+        $columns = DB::connection('sqlsrv')->select("
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = 'partenaires'
+        ");
+        Log::info('Colonnes de la table partenaires:', array_column($columns, 'COLUMN_NAME'));
+
+        $types = DB::connection('sqlsrv')->select("
+            SELECT type, COUNT(*) as count
+            FROM partenaires
+            GROUP BY type
+        ");
+        Log::info('Types de partenaires:', (array)$types);
+
+        $lignesAvecPartenaire = DB::connection('sqlsrv')->selectOne("
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN Code_Partenaire IS NOT NULL THEN 1 END) as avec_partenaire,
+                COUNT(CASE WHEN Code_Partenaire IS NULL THEN 1 END) as sans_partenaire
+            FROM Ligne_Suivi
+        ");
+        Log::info('Lignes de suivi:', (array)$lignesAvecPartenaire);
+    } catch (\Exception $e) {
+        Log::error('Erreur diagnostic: ' . $e->getMessage());
+    }
+
+    $query = "
+        SELECT
+            SUM(CASE WHEN Numero_demande IS NULL THEN Montant_Ligne ELSE 0 END) AS total_inst,
+            COUNT(CASE WHEN Numero_demande IS NULL THEN 1 END) AS nbre_inst,
+            SUM(CASE WHEN Numero_demande IS NOT NULL THEN Montant_Reglement ELSE 0 END) AS total_demande,
+            SUM(Montant_Ligne) AS total_all,
+            SUM(CASE WHEN Numero_Cheque IS NOT NULL THEN Montant_Reglement ELSE 0 END) AS total_regle
+        FROM Ligne_Suivi
+        WHERE rejete = 0 AND ISNULL(annuler, 0) = 0 AND Annee_Facture = ? AND statut_ligne NOT IN (8, 4)
+    ";
+    $result = DB::connection('sqlsrv')->select($query, [$annee])[0] ?? (object)[];
+
+    $totalInst = $result->total_inst ?? 0;
+    $nbreInst = $result->nbre_inst ?? 0;
+    $totalDemande = $result->total_demande ?? 0;
+    $totalAll = $result->total_all ?? 0;
+    $totalRegle = $result->total_regle ?? 0;
+    $tauxReglement = $totalAll > 0 ? round(($totalDemande / $totalAll) * 100, 2) : 0;
+    $tauxRegle = $totalDemande > 0 ? round(($totalRegle / $totalDemande) * 100, 2) : 0;
+
+    $stats = [
+        'nonTraites' => ['montant' => $totalInst, 'nombre' => $nbreInst],
+        'demandes' => ['montant' => $totalDemande, 'totalFacture' => $totalAll, 'taux' => $tauxReglement],
+        'regles' => ['montant' => $totalRegle, 'montantDemande' => $totalDemande, 'taux' => $tauxRegle],
+    ];
+
+    $categories = [
+        'Pharmacie' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'prestataire' AND CAST(p.code_type_prestataire AS VARCHAR) = '0' AND ls.is_evac = 0",
+        'Parapharmacie' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'prestataire' AND CAST(p.code_type_prestataire AS VARCHAR) != '0' AND p.code_type_prestataire IS NOT NULL AND ISNULL(p.coutierG, 0) = 0 AND ls.is_evac = 0",
+        'Individuels' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'souscripteur' AND ls.is_evac = 0",
+        'Evacuation' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'souscripteur' AND ls.is_evac = 1",
+        'Appels de fonds' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'prestataire' AND p.coutierG = 1 AND ls.is_evac = 0",
+    ];
+
+    $pointMensuel = [];
+    foreach ($categories as $categorie => $condition) {
+        try {
+            $query = "
+                SELECT Mois_Facture,
+                      SUM(Montant_Ligne) AS montant
+                FROM Ligne_Suivi ls
+                INNER JOIN partenaires p ON ls.Code_Partenaire = p.id
+                WHERE rejete = 0 AND ISNULL(annuler, 0) = 0 AND Annee_Facture = ? AND statut_ligne NOT IN (8, 4) AND {$condition}
+                GROUP BY Mois_Facture
+            ";
+            $results = DB::connection('sqlsrv')->select($query, [$annee]);
+            $moisData = array_fill(1, 12, 0);
+            foreach ($results as $row) {
+                $moisData[$row->Mois_Facture] = $row->montant;
+            }
+            $pointMensuel[$categorie] = $moisData;
+
+            // LOG AJOUTÉ : Vérifier les résultats pour chaque catégorie
+            Log::info("Point Mensuel pour {$categorie} (année {$annee}):", [
+                'query' => $query,
+                'bindings' => [$annee],
+                'results_count' => count($results),
+                'moisData' => $moisData,
+                'sample_row' => $results ? (array) $results[0] : null
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Erreur pour {$categorie}: " . $e->getMessage());
+            $pointMensuel[$categorie] = array_fill(1, 12, 0);
+        }
+    }
+
+    $total = array_fill(1, 12, 0);
+    foreach ($pointMensuel as $moisData) {
+        foreach ($moisData as $mois => $valeur) {
+            $total[$mois] += $valeur;
+        }
+    }
+    $pointMensuel['Total'] = $total;
+
+    $repartitionMensuelle = [];
+    foreach ($categories as $categorie => $condition) {
+        try {
+            $query = "
+                SELECT Mois_Facture, COUNT(*) AS nombre
+                FROM Ligne_Suivi ls
+                INNER JOIN partenaires p ON ls.Code_Partenaire = p.id
+                WHERE rejete = 0 AND ISNULL(annuler, 0) = 0 AND Annee_Facture = ? AND {$condition}
+                GROUP BY Mois_Facture
+            ";
+            $results = DB::connection('sqlsrv')->select($query, [$annee]);
+            $moisData = array_fill(1, 12, 0);
+            foreach ($results as $row) {
+                $moisData[$row->Mois_Facture] = $row->nombre;
+            }
+            $repartitionMensuelle[$categorie] = $moisData;
+
+            // LOG AJOUTÉ : Vérifier les résultats pour chaque catégorie
+            Log::info("Répartition Mensuelle pour {$categorie} (année {$annee}):", [
+                'query' => $query,
+                'bindings' => [$annee],
+                'results_count' => count($results),
+                'moisData' => $moisData,
+                'sample_row' => $results ? (array) $results[0] : null
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Erreur répartition pour {$categorie}: " . $e->getMessage());
+            $repartitionMensuelle[$categorie] = array_fill(1, 12, 0);
+        }
+    }
+
+    $total = array_fill(1, 12, 0);
+    foreach ($repartitionMensuelle as $moisData) {
+        foreach ($moisData as $mois => $valeur) {
+            $total[$mois] += $valeur;
+        }
+    }
+    $repartitionMensuelle['Total'] = $total;
+
+    // LOG AJOUTÉ : Comparaison finale
+    Log::info("Résumé Dashboard pour année {$annee}:", [
+        'stats' => $stats,
+        'pointMensuel_total_non_zero' => array_keys(array_filter($pointMensuel['Total'], fn($v) => $v > 0)),
+        'repartitionMensuelle_total_non_zero' => array_keys(array_filter($repartitionMensuelle['Total'], fn($v) => $v > 0)),
+        'pointMensuel_Individuels' => $pointMensuel['Individuels'],
+        'repartitionMensuelle_Individuels' => $repartitionMensuelle['Individuels']
+    ]);
+         Log::info("Logs AJAX pour année {$annee}:", [
+         'stats' => $stats,
+         'pointMensuel_total_non_zero' => array_keys(array_filter($pointMensuel['Total'], fn($v) => $v > 0)),
+         'repartitionMensuelle_total_non_zero' => array_keys(array_filter($repartitionMensuelle['Total'], fn($v) => $v > 0)),
+         'pointMensuel_Individuels' => $pointMensuel['Individuels'],
+         'repartitionMensuelle_Individuels' => $repartitionMensuelle['Individuels']
+     ]);
+
+
+    $data = [
+        'stats' => $stats,
+        'pointMensuel' => $pointMensuel,
+        'repartitionMensuelle' => $repartitionMensuelle,
+    ];
+
+    return view('pages.' . $pageName, [
+        'top_menu' => $top_menu,
+        'side_menu' => $side_menu,
+        'simple_menu' => $simple_menu,
+        'first_page_name' => $activeMenu['first_page_name'],
+        'second_page_name' => $activeMenu['second_page_name'],
+        'third_page_name' => $activeMenu['third_page_name'],
+        'page_name' => $pageName,
+        'theme' => $theme,
+        'layout' => $layout,
+        'annee' => $annee,
+        'annees' => $annees,
+        'data' => $data,
+        'fakers' => $fakers,
+    ]);
+}
+
+
+
+
+if ($pageName === 'transmission-facture') {
+    $user = auth()->user();
+    $codeProfil = $user->profil->code_profil ?? null;
+    // Utilisation des codes de profil
+    $isIndividuel = in_array($codeProfil, ['RSI']);
+    $isTiersPayant = in_array($codeProfil, ['RSTP']);
+    $isAdmin = $codeProfil === 'ADMIN';
+
+    // Récupérer uniquement les factures avec statut 0 (validées) ou 5 (transmises)
+    $query = LigneSuivi::query()
+        ->leftJoin('partenaires', 'Ligne_Suivi.Code_partenaire', '=', 'partenaires.id')
+        ->whereNotNull('Ligne_Suivi.Date_Enregistrement')
+        ->whereIn('Ligne_Suivi.Statut_Ligne', [0, 5]) // Seulement statut 0 et 5
+        ->with(['partenaire']);
+
+    // Filtres selon le profil
+    if ($isIndividuel && !$isTiersPayant) {
+        // Assuré uniquement
+        $query->where(function ($q) {
+            $q->whereNotNull('Ligne_Suivi.Nom_Assure')
+              ->where(function ($sub) {
+                  $sub->whereNull('Ligne_Suivi.Code_partenaire')
+                      ->orWhere('partenaires.type', 'souscripteur');
+              });
+        });
+    } elseif ($isTiersPayant && !$isIndividuel) {
+        // Prestataire uniquement
+        $query->whereNotNull('Ligne_Suivi.Code_partenaire')
+              ->where('partenaires.type', 'prestataire');
+    } elseif ($isIndividuel && $isTiersPayant) {
+        // Les deux
+        $query->where(function ($q) {
+            $q->where(function ($sub) {
+                $sub->whereNotNull('Ligne_Suivi.Nom_Assure')
+                    ->where(function ($inner) {
+                        $inner->whereNull('Ligne_Suivi.Code_partenaire')
+                              ->orWhere('partenaires.type', 'souscripteur');
+                    });
+            })->orWhere(function ($sub) {
+                $sub->whereNotNull('Ligne_Suivi.Code_partenaire')
+                    ->where('partenaires.type', 'prestataire');
+            });
+        });
+    }
+
+    $factures = $query->orderBy('Ligne_Suivi.Date_Enregistrement', 'desc')->get();
+
+    return view('pages.' . $pageName, [
+        'top_menu' => $top_menu,
+        'side_menu' => $side_menu,
+        'simple_menu' => $simple_menu,
+        'first_page_name' => $activeMenu['first_page_name'],
+        'second_page_name' => $activeMenu['second_page_name'],
+        'third_page_name' => $activeMenu['third_page_name'],
+        'page_name' => $pageName,
+        'theme' => $theme,
+        'layout' => $layout,
+        'factures' => $factures,
+        'isAdmin' => $isAdmin,
+        'isIndividuel' => $isIndividuel,
+        'fakers' => $fakers,
+    ]);
+}
+
+
+
+
+    if ($pageName === 'courrier-instance') {
+    $courriers = \App\Models\Courier::orderBy('DateRecep', 'desc')->paginate(10);
+
+       $fakers = [];
+       $annees = [];
+       return view('pages.' . $pageName, [
+           'top_menu' => $top_menu,
+           'side_menu' => $side_menu,
+           'simple_menu' => $simple_menu,
+           'first_page_name' => $activeMenu['first_page_name'],
+           'second_page_name' => $activeMenu['second_page_name'],
+           'third_page_name' => $activeMenu['third_page_name'],
+           'page_name' => $pageName,
+           'theme' => $theme,
+           'layout' => $layout,
+           'courriers' => $courriers,  // <-- Variable ajoutée
+           'fakers' => $fakers,
+       ]);
+   }
+
+
+
+
+
+
 // 🔥 CONDITION NOUVELLE : Liste des Courriers Santé en Instance (non-traités ou partiels)
 if ($pageName === 'detail-reseau') {
     \Log::info('=== FONCTION APPELÉE (detail-reseau) ===', [
@@ -343,16 +825,14 @@ if ($pageName === 'detail-reseau') {
     ]);
 
     try {
-        $request = request();  // Global request() pour params GET
+        $request = request();
         $annee = $request->get('annee', Carbon::now()->year);
         $annee = (int) $annee;
-        $reseauSelect = $request->get('reseau', 'pharmacies');  // ← AJOUT : Valeur brute pour le select
-        $reseau = $reseauSelect;  // Copie pour normalisation
+        $reseauSelect = $request->get('reseau', 'pharmacies');
+        $reseau = $reseauSelect;
 
-        // LOG 1: Params
         \Log::info('DEBUG detailReseau - Params reçus', ['reseau' => $reseau, 'annee' => $annee]);
 
-        // Normalize réseau
         $reseauOriginal = $reseau;
         $reseau = strtolower($reseau);
         if ($reseau === 'evacuation') $reseau = 'evacuations';
@@ -367,7 +847,7 @@ if ($pageName === 'detail-reseau') {
                 'type' => 'prestataire',
                 'exclusions' => [],
                 'inclusionsOnly' => [],
-                'conditions' => ['ls.Code_partenaire' => 'IS NOT NULL', 'p.type' => '= prestataire'], // Corrigé : utilise Code_partenaire et p.type
+                'conditions' => ['ls.Code_Partenaire' => 'IS NOT NULL', 'p.type' => '= prestataire'],
                 'useRejete' => true,
                 'titre' => 'Pharmacies',
                 'icone' => 'fa-pills',
@@ -377,9 +857,9 @@ if ($pageName === 'detail-reseau') {
                 'type' => 'prestataire',
                 'exclusions' => [],
                 'inclusionsOnly' => ['SAVOYE', 'ASCOMA'],
-                'conditions' => ['ls.Code_partenaire' => 'IS NOT NULL', 'p.type' => '= prestataire'], // Corrigé
+                'conditions' => ['ls.Code_Partenaire' => 'IS NOT NULL', 'p.type' => '= prestataire'],
                 'useRejete' => true,
-                'titre' => 'Courtiers (SAVOYE/ASCOMA)',
+                'titre' => 'Courtiers',
                 'icone' => 'fa-handshake',
             ],
             'parapharmacie' => [
@@ -387,27 +867,27 @@ if ($pageName === 'detail-reseau') {
                 'type' => 'prestataire',
                 'exclusions' => ['SAVOYE', 'ASCOMA'],
                 'inclusionsOnly' => [],
-                'conditions' => ['ls.Code_partenaire' => 'IS NOT NULL', 'p.type' => '= prestataire'], // Corrigé
+                'conditions' => ['ls.Code_Partenaire' => 'IS NOT NULL', 'p.type' => '= prestataire'],
                 'useRejete' => true,
                 'titre' => 'Parapharmacies',
                 'icone' => 'fa-shopping-bag',
             ],
             'evacuations' => [
                 'categorie' => null,
-                'type' => null,
+                'type' => 'souscripteur',
                 'exclusions' => [],
                 'inclusionsOnly' => [],
-                'conditions' => ['ls.Code_partenaire' => 'IS NULL', 'ls.is_evac' => '= 1'], // Corrigé : Code_partenaire au lieu de Code_Prestataire
+                'conditions' => ['ls.Code_Partenaire' => 'IS NOT NULL', 'ls.is_evac' => '= 1'],
                 'useRejete' => false,
                 'titre' => 'Évacuations Sanitaires',
                 'icone' => 'fa-ambulance',
             ],
             'individuels' => [
                 'categorie' => null,
-                'type' => null,
+                'type' => 'souscripteur',
                 'exclusions' => [],
                 'inclusionsOnly' => [],
-                'conditions' => ['ls.Code_partenaire' => 'IS NULL', 'ls.is_evac' => '= 0', 'ls.rejete' => '= 0'], // Corrigé
+                'conditions' => ['ls.Code_Partenaire' => 'IS NOT NULL', 'ls.is_evac' => '= 0', 'ls.rejete' => '= 0'],
                 'useRejete' => true,
                 'titre' => 'Dossiers Individuels',
                 'icone' => 'fa-user',
@@ -429,7 +909,6 @@ if ($pageName === 'detail-reseau') {
         $titreReseau = $config['titre'];
         $iconeReseau = $config['icone'];
 
-        // LOG 2: Config
         \Log::info('DEBUG detailReseau - Config appliquée', [
             'reseau' => $reseau, 'conditions' => $conditions, 'useRejete' => $useRejete, 'categorie' => $categorie
         ]);
@@ -438,13 +917,11 @@ if ($pageName === 'detail-reseau') {
 
         $annees = DB::table('Ligne_Suivi')->whereNotNull('Annee_Facture')->distinct()->orderByDesc('Annee_Facture')->take(6)->pluck('Annee_Facture')->toArray();
 
-        // CommonWhere (avec fix skip whereNull pour évacuations/individuels)
         $commonWhere = function ($query) use ($annee, $categorie, $type, $exclusions, $inclusionsOnly, $conditions, $reseau) {
             $query->where('ls.Annee_Facture', $annee);
 
-            // FIX : Skip whereNull pour évacuations/individuels (autorise Code_partenaire non null pour souscripteurs)
             if (!in_array($reseau, ['evacuations', 'individuels'])) {
-                $query->whereNull('ls.Code_partenaire'); // Corrigé : Code_partenaire au lieu de Code_Souscripteur (mais logique ajustée)
+                $query->whereNotNull('ls.Code_Partenaire');
             }
 
             foreach ($conditions as $colonne => $operateur) {
@@ -470,15 +947,14 @@ if ($pageName === 'detail-reseau') {
 
         $baseQuery = function () use ($categorie, $type, $conditions) {
             $query = DB::connection('sqlsrv')->table('Ligne_Suivi as ls');
-            $needsJoin = ($categorie !== null || $type !== null) || (!isset($conditions['ls.Code_partenaire']) || $conditions['ls.Code_partenaire'] !== 'IS NULL'); // Corrigé : Code_partenaire
+            $needsJoin = ($categorie !== null || $type !== null) || (!isset($conditions['ls.Code_Partenaire']) || $conditions['ls.Code_Partenaire'] !== 'IS NULL');
             if ($needsJoin) {
-                $query->leftJoin('partenaires as p', 'ls.Code_partenaire', '=', 'p.id') // Corrigé : Code_partenaire
+                $query->leftJoin('partenaires as p', 'ls.Code_Partenaire', '=', 'p.id')
                       ->leftJoin('type_prestataires as tp', 'p.code_type_prestataire', '=', 'tp.code_type_prestataire');
             }
             return $query;
         };
 
-        // FIX : Définir la closure applyCommonWhere correctement (appel comme fonction, pas méthode)
         $applyCommonWhere = function ($query) use ($commonWhere) {
             if (is_callable($commonWhere)) {
                 $commonWhere($query);
@@ -486,28 +962,24 @@ if ($pageName === 'detail-reseau') {
             return $query;
         };
 
-        // Vérification : Log si la closure est callable
         \Log::info('DEBUG - applyCommonWhere est callable', ['is_callable' => is_callable($applyCommonWhere)]);
 
-        // LOG 3: Count total base (debug clé) - CORRIGÉ : Appel closure (pas méthode)
         $debugQueryBase = $baseQuery();
         $debugQueryBase->selectRaw('COUNT(*) as total_count');
-        $debugQuery = $applyCommonWhere($debugQueryBase);  // ← CORRECTION : Appel closure, pas $debugQueryBase->applyCommonWhere()
+        $debugQuery = $applyCommonWhere($debugQueryBase);
         $debugCount = $debugQuery->first();
         \Log::info('DEBUG detailReseau - Count total après filtres', [
             'reseau' => $reseau, 'annee' => $annee, 'count' => $debugCount->total_count ?? 0,
             'sql' => $debugQuery->toSql(), 'bindings' => $debugQuery->getBindings()
         ]);
 
-        // LIGNE 1 : Non-traités - CORRIGÉ
         $nonTraitesBase = $baseQuery();
         $nonTraitesBase->selectRaw('COUNT(ls.Id_Ligne) as nbre_inst, ISNULL(SUM(ls.Montant_Ligne), 0) as total_inst')
-                       ->whereNull('ls.Numero_demande');
-        $nonTraitesQuery = $applyCommonWhere($nonTraitesBase);  // ← CORRECTION : Appel closure
+                      ->whereNull('ls.Numero_demande');
+        $nonTraitesQuery = $applyCommonWhere($nonTraitesBase);
         $nonTraites = $nonTraitesQuery->first() ?? (object)['nbre_inst' => 0, 'total_inst' => 0];
         \Log::info('DEBUG - Non-traités', ['nbre' => $nonTraites->nbre_inst, 'total' => $nonTraites->total_inst]);
 
-        // Demande/Facturé - CORRIGÉ
         $demandeBase = $baseQuery();
         $demandeBase->selectRaw('
             COUNT(ls.Id_Ligne) as nbre_traite,
@@ -515,49 +987,43 @@ if ($pageName === 'detail-reseau') {
             ISNULL(SUM(ls.Montant_Ligne), 0) as total_all,
             CASE WHEN ISNULL(SUM(ls.Montant_Ligne), 0) = 0 THEN 0 ELSE ROUND((ISNULL(SUM(ls.Montant_Reglement), 0) / NULLIF(ISNULL(SUM(ls.Montant_Ligne), 0), 0)) * 100, 2) END as taux_reglement
         ')
-                  ->whereNotNull('ls.Numero_demande');
-        $demandeQuery = $applyCommonWhere($demandeBase);  // ← CORRECTION
+                      ->whereNotNull('ls.Numero_demande');
+        $demandeQuery = $applyCommonWhere($demandeBase);
         $demande = $demandeQuery->first() ?? (object)['nbre_traite' => 0, 'total_demande' => 0, 'total_all' => 0, 'taux_reglement' => 0];
         \Log::info('DEBUG - Demande', ['nbre' => $demande->nbre_traite, 'total_all' => $demande->total_all, 'taux' => $demande->taux_reglement]);
 
-        // Réglé - CORRIGÉ
         $regleBase = $baseQuery();
         $regleBase->selectRaw('COUNT(ls.Id_Ligne) as nbre_regle, ISNULL(SUM(ls.Montant_Reglement), 0) as total_regle')
                   ->whereNotNull('ls.Numero_Cheque');
-        $regleQuery = $applyCommonWhere($regleBase);  // ← CORRECTION
+        $regleQuery = $applyCommonWhere($regleBase);
         $regle = $regleQuery->first() ?? (object)['nbre_regle' => 0, 'total_regle' => 0];
         \Log::info('DEBUG - Réglé', ['nbre' => $regle->nbre_regle, 'total' => $regle->total_regle]);
 
-        // FIX : Calcul tauxRegle corrigé (basé sur total_regle vs total_all)
         $tauxRegle = ($demande->total_all ?? 0) > 0 ? round(($regle->total_regle / $demande->total_all) * 100, 2) : 0;
 
-        // LIGNE 2 : Instance - CORRIGÉ
         $instanceBase = $baseQuery()->whereNull('ls.Numero_Demande');
-        $instanceQuery = $applyCommonWhere($instanceBase);  // ← CORRECTION
+        $instanceQuery = $applyCommonWhere($instanceBase);
         $instance = $instanceQuery->count('ls.Id_Ligne');
         \Log::info('DEBUG - Instance', ['count' => $instance]);
 
         $traitees = $demande->nbre_traite ?? 0;
 
-        // Trésorerie - CORRIGÉ
         $tresorBase = $baseQuery()->whereNotNull('ls.Numero_Demande')->whereNotNull('ls.Date_Transmission');
-        $tresorQuery = $applyCommonWhere($tresorBase);  // ← CORRECTION
+        $tresorQuery = $applyCommonWhere($tresorBase);
         $tresor = $tresorQuery->count('ls.Id_Ligne');
         \Log::info('DEBUG - Trésorerie', ['count' => $tresor]);
 
         $reglees = $regle->nbre_regle ?? 0;
 
-        // Soldées - CORRIGÉ
         $soldeesBase = $baseQuery()->whereNotNull('ls.Date_Cloture');
-        $soldeesQuery = $applyCommonWhere($soldeesBase);  // ← CORRECTION
+        $soldeesQuery = $applyCommonWhere($soldeesBase);
         $soldees = $soldeesQuery->count('ls.Id_Ligne');
         \Log::info('DEBUG - Soldées', ['count' => $soldees]);
 
-        // Rejets - CORRIGÉ
         $rejetsBase = $baseQuery();
         $rejetsBase->selectRaw('COUNT(ls.Id_Ligne) as nbre_lg, ISNULL(SUM(ls.Montant_Ligne), 0) as total_rejet')
-                   ->where('ls.rejete', 1);
-        $rejetsQuery = $applyCommonWhere($rejetsBase);  // ← CORRECTION
+                  ->where('ls.rejete', 1);
+        $rejetsQuery = $applyCommonWhere($rejetsBase);
         $rejets = $rejetsQuery->first() ?? (object)['nbre_lg' => 0, 'total_rejet' => 0];
         \Log::info('DEBUG - Rejets', ['nbre' => $rejets->nbre_lg, 'total' => $rejets->total_rejet]);
 
@@ -565,7 +1031,6 @@ if ($pageName === 'detail-reseau') {
         $totalRegle = $regle->total_regle ?? 0;
         $totalGlobal = $totalFacture + ($nonTraites->total_inst ?? 0) + $totalRegle;
 
-        // LIGNE 3 : Mensuel optimisé (1 query GROUP BY) - CORRIGÉ
         $mensuelBase = $baseQuery()
             ->selectRaw('
                 ls.Mois_Facture,
@@ -574,17 +1039,15 @@ if ($pageName === 'detail-reseau') {
                 ISNULL(SUM(CASE WHEN ls.Numero_demande IS NOT NULL ' . ($useRejete ? 'AND ls.rejete = 0 ' : '') . 'THEN (ls.Montant_Ligne - ls.Montant_Reglement) ELSE 0 END), 0) as total_ecart
             ')
             ->groupBy('ls.Mois_Facture');
-        $mensuelQuery = $applyCommonWhere($mensuelBase);  // ← CORRECTION : Appel closure
+        $mensuelQuery = $applyCommonWhere($mensuelBase);
         $mensuelResults = $mensuelQuery->get();
         \Log::info('DEBUG detailReseau - Mensuel Query', [
             'reseau' => $reseau,
-            'sql' => $mensuelQuery->toSql(),
-            'bindings' => $mensuelQuery->getBindings(),
-            'results_count' => $mensuelResults->count(),
-            'sample_row' => $mensuelResults->first() ? (array) $mensuelResults->first() : null  // ← CORRECTION : Cast en array au lieu de toArray()
+    'sql' => $mensuelQuery->toSql(),
+    'bindings' => $mensuelQuery->getBindings(),
+    'results_count' => $mensuelResults->count(),
+    'sample_row' => $mensuelResults->first() ? (array) $mensuelResults->first() : null
         ]);
-
-        // Remplissage tabs (avec fallback 0)
 
         $tabMoisFacture = array_fill(1, 12, 0);
         $tabMoisRegle = array_fill(1, 12, 0);
@@ -594,26 +1057,14 @@ if ($pageName === 'detail-reseau') {
         foreach ($mensuelResults as $row) {
             $i = (int) $row->Mois_Facture;
             if ($i >= 1 && $i <= 12) {
-                $tabMoisFacture[$i] = (float) $row->total_facture;  // Cast float pour cohérence
+                $tabMoisFacture[$i] = (float) $row->total_facture;
                 $tabMoisRegle[$i] = (float) $row->total_regle;
                 $tabMoisEcart[$i] = (float) $row->total_ecart;
                 $tabSoldes[$i] = $tabMoisFacture[$i] - $tabMoisRegle[$i];
             }
         }
 
-        // LOG SUITE : Tabs mensuels (ex. Octobre et Septembre) - Pour debug valeurs comme 19000 en Mois=9
-        \Log::info('DEBUG detailReseau - Tabs mensuels (ex. Octobre et Septembre)', [
-            'facture_oct' => $tabMoisFacture[10] ?? 0,
-            'regle_oct' => $tabMoisRegle[10] ?? 0,
-            'ecart_oct' => $tabMoisEcart[10] ?? 0,
-            'solde_oct' => $tabSoldes[10] ?? 0,
-            'facture_sep' => $tabMoisFacture[9] ?? 0,  // Ex. : Devrait tracer 19000 si données présentes
-            'regle_sep' => $tabMoisRegle[9] ?? 0,
-            'solde_sep' => $tabSoldes[9] ?? 0
-        ]);
-
-        // LOG FINAL : Résumé complet pour debug
-        \Log::info('DEBUG detailReseau - Résumé final', [
+              \Log::info('DEBUG detailReseau - Résumé final', [
             'reseau' => $reseau,
             'annee' => $annee,
             'totalGlobal' => $totalGlobal,
@@ -632,7 +1083,7 @@ if ($pageName === 'detail-reseau') {
             'soldees' => $soldees,
             'rejets_nbre' => $rejets->nbre_lg ?? 0,
             'rejets_total' => $rejets->total_rejet ?? 0,
-            'mensuel_mois_non_zero' => array_keys(array_filter($tabMoisFacture, fn($v) => $v > 0)),  // Ex. : [9] pour Septembre/19000
+            'mensuel_mois_non_zero' => array_keys(array_filter($tabMoisFacture, function($v) { return $v > 0; })),  // Remplacement de fn() par function()
             'useRejete' => $useRejete
         ]);
 
@@ -743,289 +1194,6 @@ if ($pageName === 'detail-reseau') {
     }
 }
 
-if ($pageName === 'dashboard') {
-    // Récupérer l'année depuis la requête (par défaut année en cours)
-    $annee = request()->get('annee', date('Y'));
-
-    // Récupérer les années disponibles
-    $annees = DB::connection('sqlsrv')
-        ->table('Ligne_Suivi')
-        ->whereNotNull('Annee_Facture')
-        ->distinct()
-        ->orderByDesc('Annee_Facture')
-        ->pluck('Annee_Facture')
-        ->take(10);
-
-    // Charger les données initiales
-    $data = $this->getDashboardData($annee);
-
-    return view('pages.' . $pageName, [
-        'top_menu' => $top_menu,
-        'side_menu' => $side_menu,
-        'simple_menu' => $simple_menu,
-        'first_page_name' => $activeMenu['first_page_name'],
-        'second_page_name' => $activeMenu['second_page_name'],
-        'third_page_name' => $activeMenu['third_page_name'],
-        'page_name' => $pageName,
-        'theme' => $theme,
-        'layout' => $layout,
-        'annee' => $annee,
-        'annees' => $annees,
-        'data' => $data,
-        'fakers' => $fakers,
-    ]);
-}
-
-if ($pageName === 'transmission-facture') {
-    $user = auth()->user();
-    $profil_id = $user->profil->id ?? null;
-    $isAdmin = ($profil_id == 5); // Admin : Affiche TOUTES les validées/transmises
-    $isIndividuel = !$isAdmin && in_array($profil_id, [7]); // Individuel pur seulement pour profil 7
-
-    Log::info('Transmission-facture Debug: Profil et Filtres', [
-        'profil_id' => $profil_id,
-        'isAdmin' => $isAdmin,
-        'isIndividuel' => $isIndividuel,
-        'user_id' => $user->id
-    ]);
-
-    $factures = collect(); // Initialisation
-
-    if ($isAdmin) {
-        // ADMIN : TOUTES les factures stLigne IN [3,5] (validées + transmises en attente)
-        $query = DB::connection('sqlsrv')->table('Ligne_Suivi as ls')
-            ->leftJoin('partenaires as p', 'ls.Code_partenaire', '=', 'p.id') // Corrigé : Code_partenaire
-            ->select([
-                'ls.Id_Ligne as id',
-                DB::raw('COALESCE(p.nom, ls.Nom_Assure, \'N/A\') as prest'), // Corrigé : utilise p.nom directement, fallback Nom_Assure
-                'ls.Numero_Reception',
-                DB::raw('COALESCE(ls.Reference_Facture, ls.Nom_Assure, \'N/A\') as ref'), // Fallback ref
-                DB::raw('CONVERT(varchar, ls.Date_Debut, 103) as deb'),
-                DB::raw('CONVERT(varchar, ls.Date_Fin, 103) as fin'),
-                DB::raw('CAST(ls.Montant_Ligne AS INT) as mtligne'),
-                DB::raw('CONVERT(varchar, ls.Date_Enregistrement, 103) as dtEnreg'),
-                DB::raw('CONVERT(varchar, ls.datetransMedecin, 103) as dtTransMed'),
-                DB::raw('CONVERT(varchar, ls.dateRetourMedecin, 103) as dtRetourMed'),
-                DB::raw('CONVERT(varchar, ls.Date_Transmission, 103) as dtTrans'),
-                DB::raw('CONVERT(varchar, ls.Date_Enregistrement, 103) as datetransestim'),
-                DB::raw('CONVERT(varchar, DATEADD(day, 1, ls.Date_Enregistrement), 103) AS dateretestim'),
-                'ls.Statut_Ligne as stLigne',
-                DB::raw('CASE WHEN ls.dateRetourMedecin IS NOT NULL THEN 1 ELSE 0 END as retour_recu'),
-                'ls.Code_partenaire', // Corrigé : Code_partenaire
-                DB::raw('CASE
-                    WHEN p.type = \'prestataire\' THEN \'Tiers-Payant\'
-                    WHEN p.type = \'souscripteur\' THEN \'Individuel\'
-                    ELSE \'Autre\' END as type_label'), // Corrigé : utilise p.type
-                DB::raw('CASE ls.Statut_Ligne
-                    WHEN 3 THEN \'Validée - Prête à Transmettre\'
-                    WHEN 5 THEN \'Transmise - En Attente Retour\'
-                    ELSE \'Autre\' END as statut_label')
-            ])
-            ->where('ls.rejete', 0)
-            ->whereRaw('ISNULL(ls.annuler, 0) = 0')
-            ->whereIn('ls.Statut_Ligne', [3, 5]) // ✅ 3 (validées/prêtes) + 5 (transmises/en attente retour)
-            ->whereNotNull('ls.Date_Transmission') // ET Date_Transmission set
-            // Pas de filtre sur Code_* ou is_evac : Affiche TOUT pour admin
-            ->orderBy('ls.Statut_Ligne', 'asc') // 3 en premier
-            ->orderBy('ls.dateRetourMedecin', 'asc'); // En attente en premier
-
-        $factures = collect($query->get()); // ✅ Collect pour faciliter pluck/each
-
-        // Log SQL généré pour debug
-        Log::info('Transmission-facture: ADMIN SQL Generated', [
-            'sql' => $query->toSql(),
-            'bindings' => $query->getBindings()
-        ]);
-
-        // ✅ CORRECTION : Conversion stdClass vers array pour logging (cast manuel)
-        $sample = $factures->first();
-        $sampleArray = $sample ? (array) $sample : null; // Cast manuel en array
-
-        Log::info('Transmission-facture: ADMIN [3,5] Results', [
-            'count' => $factures->count(),
-            'sample' => $sampleArray ?? 'Aucun', // ✅ Cast (array) au lieu de toArray() sur stdClass
-            'ids_found' => $factures->pluck('id')->toArray(), // ✅ pluck OK sur stdClass
-            'statuts_found' => $factures->pluck('stLigne')->unique()->toArray(), // ✅ [3,5]
-            'types_found' => $factures->pluck('type_label')->unique()->toArray() // ✅ Idem
-        ]);
-
-        // Fallbacks pour admin (mixtes) - Accès propriétés direct (OK sur stdClass)
-        $factures->each(function ($facture) {
-            $facture->prest = isset($facture->prest) ? $facture->prest : 'N/A';
-            $facture->ref = isset($facture->ref) ? $facture->ref : 'N/A';
-            $facture->dtTransMed = isset($facture->dtTransMed) ? $facture->dtTransMed : 'Non transmis';
-            $facture->dtRetourMed = isset($facture->dtRetourMed) ? $facture->dtRetourMed : 'En attente';
-        });
-
-    } elseif ($isIndividuel) {
-        // Branche individuels purs (profil 7) : Seulement individuelles stLigne IN [3,5]
-        $factures = LigneSuivi::select([
-            'Id_Ligne as id',
-            'Nom_Assure as prest',
-            'Numero_Reception',
-            DB::raw('(SELECT nom FROM partenaires WHERE id = ligne_suivi.Code_partenaire AND type = \'souscripteur\') as ref'), // Corrigé : Code_partenaire et type
-            DB::raw('CONVERT(varchar, Date_Debut, 103) as deb'),
-            DB::raw('CONVERT(varchar, Date_Fin, 103) as fin'),
-            DB::raw('CAST(Montant_Ligne AS INT) as mtligne'),
-            DB::raw('CONVERT(varchar, Date_Enregistrement, 103) as dtEnreg'),
-            DB::raw('CONVERT(varchar, datetransMedecin, 103) as dtTransMed'),
-            DB::raw('CONVERT(varchar, dateRetourMedecin, 103) as dtRetourMed'),
-            DB::raw('CONVERT(varchar, Date_Transmission, 103) as dtTrans'),
-            DB::raw('CONVERT(varchar, Date_Enregistrement, 103) as datetransestim'),
-            DB::raw('CONVERT(varchar, DATEADD(day, 1, Date_Enregistrement), 103) AS dateretestim'),
-            'Statut_Ligne as stLigne',
-            'Code_partenaire', // Corrigé : Code_partenaire
-            DB::raw('CASE WHEN dateRetourMedecin IS NOT NULL THEN 1 ELSE 0 END as retour_recu'),
-            DB::raw('CASE Statut_Ligne WHEN 3 THEN \'Validée - Prête à Transmettre\' WHEN 5 THEN \'Transmise - En Attente Retour\' ELSE \'Autre\' END as statut_label')
-        ])
-        ->leftJoin('partenaires as p', 'ligne_suivi.Code_partenaire', '=', 'p.id') // Corrigé : Code_partenaire
-        ->where('rejete', 0)
-        ->whereIn('Statut_Ligne', [3, 5]) // ✅ 3 + 5
-        ->whereNotNull('Date_Transmission') // ET Date_Transmission set
-        ->whereNotNull('Code_partenaire') // Corrigé : Code_partenaire
-        ->where('p.type', 'souscripteur') // Corrigé : utilise p.type
-        ->where('is_evac', 0)
-        ->orderBy('Statut_Ligne', 'asc') // 3 en premier
-        ->orderBy('dateRetourMedecin', 'asc')
-        ->get();
-
-        Log::info('Transmission-facture: Individuels [3,5] Results', [
-            'count' => $factures->count(),
-            'sample' => $factures->first()?->toArray() ?? 'Aucun', // ✅ Eloquent : toArray() OK
-            'statuts_found' => $factures->pluck('stLigne')->unique()->toArray() // [3,5]
-        ]);
-
-        $factures->each(function ($facture) {
-            $facture->ref = $facture->ref ?? 'N/A';
-            $facture->prest = $facture->prest ?? $facture->Nom_Assure ?? 'N/A';
-            $facture->dtTransMed = $facture->dtTransMed ?? 'Non transmis';
-            $facture->dtRetourMed = $facture->dtRetourMed ?? 'En attente';
-            $facture->type_label = 'Individuel';
-        });
-
-    } else {
-        // Branche tiers-payant (autres profils) : Seulement tiers-payant stLigne IN [3,5]
-        $factures = LigneSuivi::select([
-            'Id_Ligne as id',
-            DB::raw('(SELECT nom FROM partenaires WHERE id = ligne_suivi.Code_partenaire AND type = \'prestataire\') as prest'), // Corrigé : Code_partenaire et type
-            'Numero_Reception',
-            'Reference_Facture as ref',
-            DB::raw('CONVERT(varchar, Date_Debut, 103) as deb'),
-            DB::raw('CONVERT(varchar, Date_Fin, 103) as fin'),
-            DB::raw('CAST(Montant_Ligne AS INT) as mtligne'),
-            DB::raw('CONVERT(varchar, Date_Enregistrement, 103) as dtEnreg'),
-            DB::raw('CONVERT(varchar, datetransMedecin, 103) as dtTransMed'),
-            DB::raw('CONVERT(varchar, dateRetourMedecin, 103) as dtRetourMed'),
-            DB::raw('CONVERT(varchar, Date_Transmission, 103) as dtTrans'),
-            DB::raw('\'\' as datetransestim'),
-            DB::raw('\'\' AS dateretestim'),
-            'Statut_Ligne as stLigne',
-            DB::raw('CASE WHEN dateRetourMedecin IS NOT NULL THEN 1 ELSE 0 END as retour_recu'),
-            DB::raw('CASE Statut_Ligne WHEN 3 THEN \'Validée - Prête à Transmettre\' WHEN 5 THEN \'Transmise - En Attente Retour\' ELSE \'Autre\' END as statut_label')
-        ])
-        ->leftJoin('partenaires as p', 'ligne_suivi.Code_partenaire', '=', 'p.id') // Corrigé : Code_partenaire
-        ->where('rejete', 0)
-        ->whereRaw('ISNULL(annuler, 0) = 0')
-        ->whereIn('Statut_Ligne', [3, 5]) // ✅ 3 + 5
-        ->whereNotNull('Date_Transmission') // ET Date_Transmission set
-        ->whereNotNull('Code_partenaire') // Corrigé : Code_partenaire
-        ->where('p.type', 'prestataire') // Corrigé : utilise p.type
-        ->whereRaw('(SELECT coutierG FROM partenaires WHERE id = Code_partenaire) IS NULL OR coutierG = 0') // Corrigé : Code_partenaire
-        ->where('is_evac', 0)
-        ->orderBy('Statut_Ligne', 'asc') // 3 en premier
-        ->orderBy('dateRetourMedecin', 'asc')
-        ->get();
-
-        Log::info('Transmission-facture: Tiers-Payant [3,5] Results', [
-            'count' => $factures->count(),
-            'sample' => $factures->first()?->toArray() ?? 'Aucun', // ✅ Eloquent : toArray() OK
-            'statuts_found' => $factures->pluck('stLigne')->unique()->toArray() // [3,5]
-        ]);
-
-        $factures->each(function ($facture) {
-            $facture->prest = $facture->prest ?? 'N/A';
-            $facture->ref = $facture->ref ?? $facture->Reference_Facture ?? 'N/A';
-            $facture->dtTransMed = $facture->dtTransMed ?? 'Non transmis';
-            $facture->dtRetourMed = $facture->dtRetourMed ?? 'En attente';
-            $facture->type_label = 'Tiers-Payant';
-        });
-    }
-
-    $title = $isAdmin
-        ? 'Transmission et Retour des Factures Validées/Transmises (ADMIN)'
-        : ($isIndividuel
-            ? 'Transmission et Retour des Factures Individuelles Validées/Transmises'
-            : 'Transmission et Retour des Factures Tiers-Payant Validées/Transmises');
-
-    Log::info('Transmission-facture: Final [3,5]', [
-        'isAdmin' => $isAdmin,
-        'isIndividuel' => $isIndividuel,
-        'factures_count' => $factures->count(),
-        'title' => $title,
-        'statuts_found' => $factures->pluck('stLigne')->unique()->toArray(), // ✅ [3,5]
-        'sample_ids' => $factures->pluck('id')->take(3)->toArray(), // ✅ IDs sample pour debug
-        'types_found' => $factures->pluck('type_label')->unique()->toArray() // ✅ Types (Individuel/Tiers-Payant/Autre)
-    ]);
-
-    // Variables communes pour layout (inchangé)
-    $side_menu = $this->sideMenu() ?? [];
-    $activeMenu = $this->activeMenu($layout, $pageName) ?? [
-        'first_page_name' => $pageName,
-        'second_page_name' => '',
-        'third_page_name' => ''
-    ];
-    $top_menu = $this->topMenu() ?? [];
-    $simple_menu = $this->simpleMenu() ?? [];
-    $fakers = [];
-    $annees = [];
-
-    return view('pages.' . $pageName, [
-        'top_menu' => $top_menu,
-        'side_menu' => $side_menu,
-        'simple_menu' => $simple_menu,
-        'first_page_name' => $activeMenu['first_page_name'],
-        'second_page_name' => $activeMenu['second_page_name'],
-        'third_page_name' => $activeMenu['third_page_name'],
-        'page_name' => $pageName,
-        'theme' => $theme,
-        'layout' => $layout,
-        'factures' => $factures,     // ✅ Factures avec stLigne [3,5]
-        'isIndividuel' => $isIndividuel,
-        'isAdmin' => $isAdmin,
-        'title' => $title,
-        'fakers' => $fakers,
-        'profil_id' => $profil_id,
-    ]);
-}
-
-
-    if ($pageName === 'courrier-instance') {
-    $courriers = \App\Models\Courier::orderBy('DateRecep', 'desc')->paginate(10);
-     $side_menu = $this->sideMenu() ?? [];
-       $activeMenu = $this->activeMenu($layout, $pageName) ?? [
-           'first_page_name' => $pageName,
-           'second_page_name' => '',
-           'third_page_name' => ''
-       ];
-       $top_menu = $this->topMenu() ?? [];
-       $simple_menu = $this->simpleMenu() ?? [];
-       $fakers = [];
-       $annees = [];
-       return view('pages.' . $pageName, [
-           'top_menu' => $top_menu,
-           'side_menu' => $side_menu,
-           'simple_menu' => $simple_menu,
-           'first_page_name' => $activeMenu['first_page_name'],
-           'second_page_name' => $activeMenu['second_page_name'],
-           'third_page_name' => $activeMenu['third_page_name'],
-           'page_name' => $pageName,
-           'theme' => $theme,
-           'layout' => $layout,
-           'courriers' => $courriers,  // <-- Variable ajoutée
-           'fakers' => $fakers,
-       ]);
-   }
-
 
 
     return view('pages.' . $pageName, [
@@ -1042,6 +1210,167 @@ if ($pageName === 'transmission-facture') {
     ]);
 
 }
+
+
+
+
+   public function getPrestataires(Request $request)
+{
+    $prestataires = DB::connection('sqlsrv')
+        ->table('partenaires')
+        ->where('type', 'prestataire')
+        ->select('id as code', 'nom as libelle')
+        ->orderBy('nom')
+        ->get();
+    return response()->json($prestataires);
+}
+
+    /**
+     * Charger les données du tableau (adaptation de votre logique PHP originale)
+     */
+ /**
+ * Charger les données du tableau (adaptation de votre logique PHP originale)
+ */
+public function getSituationData(Request $request)
+{
+    $reseau = $request->get('reseau', 'tt');
+    $statutr = $request->get('statutr', 'tt');
+    $prestataire = $request->get('prestataire'); // Optionnel, pour filtrer par prestataire spécifique
+
+    // Construire la requête SQL de base (simplifiée et adaptée à Laravel)
+    $query = "
+        SELECT
+            ls.Code_Partenaire AS Code_Prestataire,  -- <-- Correction : utiliser Code_Partenaire et l'aliaser si nécessaire
+            p.nom AS Libelle_Prestataire,
+            SUM(CASE WHEN ls.Mois_Facture = 1 THEN ls.Montant_Ligne ELSE 0 END) AS JANVIER,
+            SUM(CASE WHEN ls.Mois_Facture = 2 THEN ls.Montant_Ligne ELSE 0 END) AS FEVRIER,
+            SUM(CASE WHEN ls.Mois_Facture = 3 THEN ls.Montant_Ligne ELSE 0 END) AS MARS,
+            SUM(CASE WHEN ls.Mois_Facture = 4 THEN ls.Montant_Ligne ELSE 0 END) AS AVRIL,
+            SUM(CASE WHEN ls.Mois_Facture = 5 THEN ls.Montant_Ligne ELSE 0 END) AS MAI,
+            SUM(CASE WHEN ls.Mois_Facture = 6 THEN ls.Montant_Ligne ELSE 0 END) AS JUIN,
+            SUM(CASE WHEN ls.Mois_Facture = 7 THEN ls.Montant_Ligne ELSE 0 END) AS JUILLET,
+            SUM(CASE WHEN ls.Mois_Facture = 8 THEN ls.Montant_Ligne ELSE 0 END) AS AOUT,
+            SUM(CASE WHEN ls.Mois_Facture = 9 THEN ls.Montant_Ligne ELSE 0 END) AS SEPTEMBRE,
+            SUM(CASE WHEN ls.Mois_Facture = 10 THEN ls.Montant_Ligne ELSE 0 END) AS OCTOBRE,
+            SUM(CASE WHEN ls.Mois_Facture = 11 THEN ls.Montant_Ligne ELSE 0 END) AS NOVEMBRE,
+            SUM(CASE WHEN ls.Mois_Facture = 12 THEN ls.Montant_Ligne ELSE 0 END) AS DECEMBRE,
+            COUNT(CASE WHEN ls.Mois_Facture = 1 THEN 1 END) AS JANVIER_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 2 THEN 1 END) AS FEVRIER_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 3 THEN 1 END) AS MARS_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 4 THEN 1 END) AS AVRIL_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 5 THEN 1 END) AS MAI_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 6 THEN 1 END) AS JUIN_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 7 THEN 1 END) AS JUILLET_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 8 THEN 1 END) AS AOUT_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 9 THEN 1 END) AS SEPTEMBRE_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 10 THEN 1 END) AS OCTOBRE_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 11 THEN 1 END) AS NOVEMBRE_NB_FACTURES,
+            COUNT(CASE WHEN ls.Mois_Facture = 12 THEN 1 END) AS DECEMBRE_NB_FACTURES,
+            SUM(ls.Montant_Ligne) AS TOTAL_MONTANT,
+            ls.Annee_Facture
+        FROM Ligne_Suivi ls
+        INNER JOIN partenaires p ON ls.Code_Partenaire = p.id
+        WHERE ls.Code_Partenaire IS NOT NULL  -- <-- Correction : utiliser Code_Partenaire
+        AND ls.statut_ligne NOT IN (8)
+        AND ls.rejete = 0
+        AND ISNULL(ls.annuler, 0) = 0
+    ";
+
+    // Ajouter les conditions de filtrage
+    $bindings = [];
+    if ($reseau !== 'tt') {
+        switch ($reseau) {
+            case 'phar':
+                $query .= " AND p.type = 'prestataire' AND p.code_type_prestataire = '0' AND ls.is_evac = 0";
+                break;
+            case 'para':
+                $query .= " AND p.type = 'prestataire' AND p.code_type_prestataire != '0' AND ISNULL(p.coutierG, 0) = 0 AND ls.is_evac = 0";
+                break;
+            case 'ind':
+                $query .= " AND p.type = 'souscripteur' AND ls.is_evac = 0";
+                break;
+            case 'evac':
+                $query .= " AND p.type = 'souscripteur' AND ls.is_evac = 1";
+                break;
+            case 'apfd':
+                $query .= " AND p.type = 'prestataire' AND p.coutierG = 1 AND ls.is_evac = 0";
+                break;
+        }
+    }
+
+    if ($statutr !== 'tt') {
+        $query .= " AND ls.Annee_Facture = ?";
+        $bindings[] = $statutr;
+    }
+
+    if ($prestataire) {
+        $query .= " AND ls.Code_Partenaire = ?";  // <-- Correction : utiliser Code_Partenaire
+        $bindings[] = $prestataire;
+    }
+
+    $query .= " GROUP BY ls.Code_Partenaire, p.nom, ls.Annee_Facture ORDER BY p.nom";  // <-- Correction : utiliser Code_Partenaire
+
+    $results = DB::connection('sqlsrv')->select($query, $bindings);
+
+    // Générer le HTML du tableau (comme dans votre code original)
+    $html = '<div class="p-6">';
+    $html .= '<h3 class="text-xl font-semibold mb-4">Liste des factures reçues</h3>';
+    if (empty($results)) {
+        $html .= '<p class="text-gray-500">Aucune donnée disponible.</p>';
+    } else {
+        $html .= '<div class="overflow-x-auto">';
+        $html .= '<table id="dataTable" class="min-w-full divide-y divide-gray-200">';
+        $html .= '<thead class="bg-gray-50">';
+        $html .= '<tr>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prestataire</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Janvier</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Février</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mars</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avril</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mai</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Juin</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Juillet</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Août</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Septembre</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Octobre</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Novembre</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Décembre</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Montant</th>';
+        $html .= '<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Année</th>';
+        $html .= '</tr>';
+        $html .= '</thead>';
+        $html .= '<tbody class="bg-white divide-y divide-gray-200">';
+
+        foreach ($results as $row) {
+            $html .= '<tr>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">' . htmlspecialchars($row->Libelle_Prestataire) . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->JANVIER, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->FEVRIER, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->MARS, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->AVRIL, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->MAI, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->JUIN, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->JUILLET, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->AOUT, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->SEPTEMBRE, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->OCTOBRE, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->NOVEMBRE, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . number_format($row->DECEMBRE, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">' . number_format($row->TOTAL_MONTANT, 0, ',', ' ') . '</td>';
+            $html .= '<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">' . $row->Annee_Facture . '</td>';
+            $html .= '</tr>';
+        }
+
+        $html .= '</tbody>';
+        $html .= '</table>';
+        $html .= '</div>';
+    }
+    $html .= '</div>';
+
+    return $html;
+}
+
+
 
 
     /**
@@ -1149,7 +1478,7 @@ public function activeMenu($layout, $pageName)
             'traitement-speciaux' => [
                 'icon' => 'tool',
                 'layout' => 'side-menu',
-                'page_name' => 'traitement-speciaux',
+                'page_name' => '',
                 'title' => 'Traitement spéciaux',
                 'sub_menu'=> [
                      'correction-facture' => [
@@ -1475,24 +1804,42 @@ public function activeMenu($layout, $pageName)
 
     private function getDashboardData($annee)
 {
-    // 1. Cartes statistiques
-    $stats = $this->getStats($annee);
 
-    // 2. Tableau "FACTURES SANTE (POINT MENSUEL)"
-    $pointMensuel = $this->getPointMensuel($annee);
+    $annees = DB::connection('sqlsrv')
+        ->table('Ligne_Suivi')
+        ->whereNotNull('Annee_Facture')
+        ->distinct()
+        ->orderByDesc('Annee_Facture')
+        ->pluck('Annee_Facture')
+        ->take(10);
 
-    // 3. Tableau "REPARTITION MENSUELLE"
-    $repartitionMensuelle = $this->getRepartitionMensuelle($annee);
+    try {
+        $columns = DB::connection('sqlsrv')->select("
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_NAME = 'partenaires'
+        ");
+        Log::info('Colonnes de la table partenaires:', array_column($columns, 'COLUMN_NAME'));
 
-    return [
-        'stats' => $stats,
-        'pointMensuel' => $pointMensuel,
-        'repartitionMensuelle' => $repartitionMensuelle,
-    ];
-}
+        $types = DB::connection('sqlsrv')->select("
+            SELECT type, COUNT(*) as count
+            FROM partenaires
+            GROUP BY type
+        ");
+        Log::info('Types de partenaires:', (array)$types);
 
-private function getStats($annee)
-{
+        $lignesAvecPartenaire = DB::connection('sqlsrv')->selectOne("
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN Code_Partenaire IS NOT NULL THEN 1 END) as avec_partenaire,
+                COUNT(CASE WHEN Code_Partenaire IS NULL THEN 1 END) as sans_partenaire
+            FROM Ligne_Suivi
+        ");
+        Log::info('Lignes de suivi:', (array)$lignesAvecPartenaire);
+    } catch (\Exception $e) {
+        Log::error('Erreur diagnostic: ' . $e->getMessage());
+    }
+
     $query = "
         SELECT
             SUM(CASE WHEN Numero_demande IS NULL THEN Montant_Ligne ELSE 0 END) AS total_inst,
@@ -1503,7 +1850,6 @@ private function getStats($annee)
         FROM Ligne_Suivi
         WHERE rejete = 0 AND ISNULL(annuler, 0) = 0 AND Annee_Facture = ? AND statut_ligne NOT IN (8, 4)
     ";
-
     $result = DB::connection('sqlsrv')->select($query, [$annee])[0] ?? (object)[];
 
     $totalInst = $result->total_inst ?? 0;
@@ -1514,93 +1860,131 @@ private function getStats($annee)
     $tauxReglement = $totalAll > 0 ? round(($totalDemande / $totalAll) * 100, 2) : 0;
     $tauxRegle = $totalDemande > 0 ? round(($totalRegle / $totalDemande) * 100, 2) : 0;
 
-    return [
+    $stats = [
         'nonTraites' => ['montant' => $totalInst, 'nombre' => $nbreInst],
         'demandes' => ['montant' => $totalDemande, 'totalFacture' => $totalAll, 'taux' => $tauxReglement],
         'regles' => ['montant' => $totalRegle, 'montantDemande' => $totalDemande, 'taux' => $tauxRegle],
     ];
-}
 
-private function getPointMensuel($annee)
-{
     $categories = [
-        'Pharmacie' => "tp.code_type_prestataire = '0' AND ls.Code_partenaire IS NULL AND ls.is_evac = 0 AND p.type = 'prestataire'", // Corrigé : Code_partenaire et p.type
-        'Parapharmacie' => "tp.code_type_prestataire = '1' AND ls.Code_partenaire IS NULL AND ls.is_evac = 0 AND (p.coutierG IS NULL OR p.coutierG = 0) AND p.type = 'prestataire'", // Corrigé
-        'Individuels' => "ls.Code_partenaire IS NULL AND ls.is_evac = 0", // Corrigé : Code_partenaire
-        'Evacuation' => "ls.Code_partenaire IS NULL AND ls.is_evac = 1", // Corrigé
-        'Appels de fonds' => "tp.code_type_prestataire = '1' AND ls.Code_partenaire IS NULL AND ls.is_evac = 0 AND p.coutierG = 1 AND p.type = 'prestataire'", // Corrigé
+        'Pharmacie' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'prestataire' AND CAST(p.code_type_prestataire AS VARCHAR) = '0' AND ls.is_evac = 0",
+        'Parapharmacie' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'prestataire' AND CAST(p.code_type_prestataire AS VARCHAR) != '0' AND p.code_type_prestataire IS NOT NULL AND ISNULL(p.coutierG, 0) = 0 AND ls.is_evac = 0",
+        'Individuels' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'souscripteur' AND ls.is_evac = 0",
+        'Evacuation' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'souscripteur' AND ls.is_evac = 1",
+        'Appels de fonds' => "ls.Code_Partenaire IS NOT NULL AND p.type = 'prestataire' AND p.coutierG = 1 AND ls.is_evac = 0",
     ];
 
-    $data = [];
+    $pointMensuel = [];
     foreach ($categories as $categorie => $condition) {
-        $query = "
-            SELECT Mois_Facture,
-                   SUM(CASE WHEN Numero_demande IS NULL THEN Montant_Ligne - ISNULL(Montant_Reglement, 0) ELSE 0 END) AS montant
-            FROM Ligne_Suivi ls
-            LEFT JOIN partenaires p ON ls.Code_partenaire = p.id  -- Corrigé : Code_partenaire
-            LEFT JOIN type_prestataires tp ON p.code_type_prestataire = tp.code_type_prestataire
-            WHERE rejete = 0 AND ISNULL(annuler, 0) = 0 AND Annee_Facture = ? AND statut_ligne NOT IN (8, 4) AND {$condition}
-            GROUP BY Mois_Facture
-        ";
-        $results = DB::connection('sqlsrv')->select($query, [$annee]);
-        $moisData = array_fill(1, 12, 0);
-        foreach ($results as $row) {
-            $moisData[$row->Mois_Facture] = $row->montant;
+        try {
+            $query = "
+                SELECT Mois_Facture,
+                       SUM(Montant_Ligne) AS montant
+                FROM Ligne_Suivi ls
+                INNER JOIN partenaires p ON ls.Code_Partenaire = p.id
+                WHERE rejete = 0 AND ISNULL(annuler, 0) = 0 AND Annee_Facture = ? AND statut_ligne NOT IN (8, 4) AND {$condition}
+                GROUP BY Mois_Facture
+            ";
+            $results = DB::connection('sqlsrv')->select($query, [$annee]);
+            $moisData = array_fill(1, 12, 0);
+            foreach ($results as $row) {
+                $moisData[$row->Mois_Facture] = $row->montant;
+            }
+            $pointMensuel[$categorie] = $moisData;
+
+            // LOG AJOUTÉ : Vérifier les résultats pour chaque catégorie
+            Log::info("Point Mensuel pour {$categorie} (année {$annee}):", [
+                'query' => $query,
+                'bindings' => [$annee],
+                'results_count' => count($results),
+                'moisData' => $moisData,
+                'sample_row' => $results ? (array) $results[0] : null
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Erreur pour {$categorie}: " . $e->getMessage());
+            $pointMensuel[$categorie] = array_fill(1, 12, 0);
         }
-        $data[$categorie] = $moisData;
     }
 
-    // Ligne Total
     $total = array_fill(1, 12, 0);
-    foreach ($data as $moisData) {
+    foreach ($pointMensuel as $moisData) {
         foreach ($moisData as $mois => $valeur) {
             $total[$mois] += $valeur;
         }
     }
-    $data['Total'] = $total;
+    $pointMensuel['Total'] = $total;
 
-    return $data;
-}
-
-private function getRepartitionMensuelle($annee)
-{
-    $categories = [
-        'Pharmacie' => "tp.code_type_prestataire = '0' AND ls.Code_partenaire IS NULL AND ls.is_evac = 0 AND p.type = 'prestataire'", // Corrigé
-        'Parapharmacie' => "tp.code_type_prestataire = '1' AND ls.Code_partenaire IS NULL AND ls.is_evac = 0 AND (p.coutierG IS NULL OR p.coutierG = 0) AND p.type = 'prestataire'", // Corrigé
-        'Individuels' => "ls.Code_partenaire IS NULL AND ls.is_evac = 0", // Corrigé
-        'Evacuation' => "ls.Code_partenaire IS NULL AND ls.is_evac = 1", // Corrigé
-        'Appels de fonds' => "tp.code_type_prestataire = '1' AND ls.Code_partenaire IS NULL AND ls.is_evac = 0 AND p.coutierG = 1 AND p.type = 'prestataire'", // Corrigé
-    ];
-
-    $data = [];
+    $repartitionMensuelle = [];
     foreach ($categories as $categorie => $condition) {
-        $query = "
-            SELECT Mois_Facture, COUNT(*) AS nombre
-            FROM Ligne_Suivi ls
-            LEFT JOIN partenaires p ON ls.Code_partenaire = p.id  -- Corrigé : Code_partenaire
-            LEFT JOIN type_prestataires tp ON p.code_type_prestataire = tp.code_type_prestataire
-            WHERE rejete = 0 AND ISNULL(annuler, 0) = 0 AND Annee_Facture = ? AND {$condition}
-            GROUP BY Mois_Facture
-        ";
-        $results = DB::connection('sqlsrv')->select($query, [$annee]);
-        $moisData = array_fill(1, 12, 0);
-        foreach ($results as $row) {
-            $moisData[$row->Mois_Facture] = $row->nombre;
+        try {
+            $query = "
+                SELECT Mois_Facture, COUNT(*) AS nombre
+                FROM Ligne_Suivi ls
+                INNER JOIN partenaires p ON ls.Code_Partenaire = p.id
+                WHERE rejete = 0 AND ISNULL(annuler, 0) = 0 AND Annee_Facture = ? AND {$condition}
+                GROUP BY Mois_Facture
+            ";
+            $results = DB::connection('sqlsrv')->select($query, [$annee]);
+            $moisData = array_fill(1, 12, 0);
+            foreach ($results as $row) {
+                $moisData[$row->Mois_Facture] = $row->nombre;
+            }
+            $repartitionMensuelle[$categorie] = $moisData;
+
+            // LOG AJOUTÉ : Vérifier les résultats pour chaque catégorie
+            Log::info("Répartition Mensuelle pour {$categorie} (année {$annee}):", [
+                'query' => $query,
+                'bindings' => [$annee],
+                'results_count' => count($results),
+                'moisData' => $moisData,
+                'sample_row' => $results ? (array) $results[0] : null
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Erreur répartition pour {$categorie}: " . $e->getMessage());
+            $repartitionMensuelle[$categorie] = array_fill(1, 12, 0);
         }
-        $data[$categorie] = $moisData;
     }
 
-    // Ligne Total
     $total = array_fill(1, 12, 0);
-    foreach ($data as $moisData) {
+    foreach ($repartitionMensuelle as $moisData) {
         foreach ($moisData as $mois => $valeur) {
             $total[$mois] += $valeur;
         }
     }
-    $data['Total'] = $total;
+    $repartitionMensuelle['Total'] = $total;
 
-    return $data;
+    // LOG AJOUTÉ : Comparaison finale
+    Log::info("Résumé Dashboard pour année {$annee}:", [
+        'stats' => $stats,
+        'pointMensuel_total_non_zero' => array_keys(array_filter($pointMensuel['Total'], fn($v) => $v > 0)),
+        'repartitionMensuelle_total_non_zero' => array_keys(array_filter($repartitionMensuelle['Total'], fn($v) => $v > 0)),
+        'pointMensuel_Individuels' => $pointMensuel['Individuels'],
+        'repartitionMensuelle_Individuels' => $repartitionMensuelle['Individuels']
+    ]);
+         Log::info("Logs AJAX pour année {$annee}:", [
+         'stats' => $stats,
+         'pointMensuel_total_non_zero' => array_keys(array_filter($pointMensuel['Total'], fn($v) => $v > 0)),
+         'repartitionMensuelle_total_non_zero' => array_keys(array_filter($repartitionMensuelle['Total'], fn($v) => $v > 0)),
+         'pointMensuel_Individuels' => $pointMensuel['Individuels'],
+         'repartitionMensuelle_Individuels' => $repartitionMensuelle['Individuels']
+     ]);
+
+
+    $data = [
+        'stats' => $stats,
+        'pointMensuel' => $pointMensuel,
+        'repartitionMensuelle' => $repartitionMensuelle,
+    ];
+
+
+    return [
+        'stats' => $stats,
+        'pointMensuel' => $pointMensuel,
+        'repartitionMensuelle' => $repartitionMensuelle,
+    ];
 }
+
+
 
 
 

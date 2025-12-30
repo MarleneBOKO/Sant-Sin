@@ -12,7 +12,7 @@
             <a href="" class="intro-x flex items-center pl-5 pt-4">
                 <img alt="Midone Tailwind HTML Admin Template" class="w-6" src="{{ asset('dist/images/logo.svg') }}">
                 <span class="hidden xl:block text-white text-lg ml-3">
-                    Mid<span class="font-medium">one</span>
+                    OSFACT<span class="font-medium"> SIN</span>
                 </span>
             </a>
             <div class="side-nav__devider my-6"></div>
@@ -22,7 +22,8 @@
                         <li class="side-nav__devider my-6"></li>
                     @else
                         <li>
-                            <a href="{{ isset($menu['layout']) ? route('page', ['layout' => $menu['layout'], 'theme' => $theme, 'pageName' => $menu['page_name']]) : 'javascript:;' }}" class="{{ $first_page_name == $menu['page_name'] ? 'side-menu side-menu--active' : 'side-menu' }}">
+                            {{-- CORRECTION NIVEAU 1 : Ajout de la condition && $menu['page_name'] != 'javascript:;' --}}
+                            <a href="{{ isset($menu['layout']) && $menu['page_name'] != 'javascript:;' ? route('page', ['layout' => $menu['layout'], 'theme' => $theme, 'pageName' => $menu['page_name']]) : 'javascript:;' }}" class="{{ $first_page_name == $menu['page_name'] ? 'side-menu side-menu--active' : 'side-menu' }}">
                                 <div class="side-menu__icon">
                                     <i data-feather="{{ $menu['icon'] }}"></i>
                                 </div>
@@ -37,7 +38,8 @@
                                 <ul class="{{ $first_page_name == $menu['page_name'] ? 'side-menu__sub-open' : '' }}">
                                     @foreach ($menu['sub_menu'] as $subMenu)
                                         <li>
-                                            <a href="{{ isset($subMenu['layout']) ? route('page', ['layout' => $subMenu['layout'], 'theme' => $theme, 'pageName' => $subMenu['page_name']]) : 'javascript:;' }}" class="{{ $second_page_name == $subMenu['page_name'] ? 'side-menu side-menu--active' : 'side-menu' }}">
+                                            {{-- CORRECTION NIVEAU 2 : Ajout de la condition && $subMenu['page_name'] != 'javascript:;' --}}
+                                            <a href="{{ isset($subMenu['layout']) && $subMenu['page_name'] != 'javascript:;' ? route('page', ['layout' => $subMenu['layout'], 'theme' => $theme, 'pageName' => $subMenu['page_name']]) : 'javascript:;' }}" class="{{ $second_page_name == $subMenu['page_name'] ? 'side-menu side-menu--active' : 'side-menu' }}">
                                                 <div class="side-menu__icon">
                                                     <i data-feather="activity"></i>
                                                 </div>
@@ -52,7 +54,8 @@
                                                 <ul class="{{ $second_page_name == $subMenu['page_name'] ? 'side-menu__sub-open' : '' }}">
                                                     @foreach ($subMenu['sub_menu'] as $lastSubMenu)
                                                         <li>
-                                                            <a href="{{ isset($lastSubMenu['layout']) ? route('page', ['layout' => $lastSubMenu['layout'], 'theme' => $theme, 'pageName' => $lastSubMenu['page_name']]) : 'javascript:;' }}" class="{{ $third_page_name == $lastSubMenu['page_name'] ? 'side-menu side-menu--active' : 'side-menu' }}">
+                                                            {{-- CORRECTION NIVEAU 3 : Ajout de la condition && $lastSubMenu['page_name'] != 'javascript:;' --}}
+                                                            <a href="{{ isset($lastSubMenu['layout']) && $lastSubMenu['page_name'] != 'javascript:;' ? route('page', ['layout' => $lastSubMenu['layout'], 'theme' => $theme, 'pageName' => $lastSubMenu['page_name']]) : 'javascript:;' }}" class="{{ $third_page_name == $lastSubMenu['page_name'] ? 'side-menu side-menu--active' : 'side-menu' }}">
                                                                 <div class="side-menu__icon">
                                                                     <i data-feather="zap"></i>
                                                                 </div>
@@ -76,7 +79,7 @@
         <div class="content">
             @include('../layout/components/top-bar')
             @yield('subcontent')
-        </div>
-        <!-- END: Content -->
-    </div>
+</div>
+<!-- END: Content -->
+</div>
 @endsection

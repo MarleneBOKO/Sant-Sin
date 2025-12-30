@@ -1,4 +1,5 @@
 <?php
+
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
@@ -17,9 +18,10 @@ class MenusSeeder extends Seeder
             ['nom' => 'Gestion des factures', 'route' => 'gestion-factures'],
             ['nom' => 'Courrier en instance', 'route' => 'courrier-instance'],
             ['nom' => 'Gestion des appels de fonds', 'route' => 'appels-fonds'],
-            ['nom' => 'Listing et reporting', 'route' => 'listing-reporting'],
-            ['nom' => 'Traitement spéciaux', 'route' => 'traitement-speciaux'],
-            ['nom' => 'Admin', 'route' => 'admin'],
+            ['nom' => 'Listing et reporting', 'route' => ''],
+            ['nom' => 'Traitement spéciaux', 'route' => ''],
+            ['nom' => 'Admin', 'route' => ''],
+            ['nom' => 'Situation prestataire', 'route' => 'situation-prestataire'], // 🔥 AJOUTÉ : Nouveau menu visible par tous
         ];
 
         $menuIds = [];
@@ -27,11 +29,11 @@ class MenusSeeder extends Seeder
             $menuIds[$menu['nom']] = Menu::create($menu)->id;
         }
 
-        // Sous-menus
+        // Sous-menus (inchangés)
         $sousMenus = [
             ['nom' => 'Enregistrer un dépôt individuel', 'route' => 'depot-individuel', 'parent_id' => $menuIds['Gestion des factures']],
             ['nom' => 'Transmission de facture', 'route' => 'transmission-facture', 'parent_id' => $menuIds['Gestion des factures']],
-            ['nom' => 'Saisie règlement', 'route' => 'saisie-reglement', 'parent_id' => $menuIds['Gestion des factures']],
+            ['nom' => 'Saisie Facture', 'route' => 'gestion-factures', 'parent_id' => $menuIds['Gestion des factures']],
 
             ['nom' => 'Correction de facture', 'route' => 'correction-facture', 'parent_id' => $menuIds['Traitement spéciaux']],
             ['nom' => 'Annulation de facture', 'route' => 'annulation-facture', 'parent_id' => $menuIds['Traitement spéciaux']],

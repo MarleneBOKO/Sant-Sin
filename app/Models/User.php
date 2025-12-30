@@ -2,75 +2,77 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+use Carbon\Carbon;
+use App\Models\Notification;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
-
-    /**
-     * Désactive la gestion automatique des timestamps.
-     *
-     * @var bool
-     */
-    public $timestamps = false;
-
-    /**
-     * Ces constantes forcent Laravel à ignorer les colonnes created_at et updated_at
-     * même si elles existent dans la table.
-     */
-    const CREATED_AT = null;
-    const UPDATED_AT = null;
-
-    /**
-     * Les attributs assignables en masse.
-     *
-     * @var array<int,string>
-     */
     protected $fillable = [
-        'name',
-        'email',
-        'password',
-        'login',
-        'nom',
-        'prenom',
-        'active',
-        'profil_id',
-        'service_id',
+        'name', 'prenom', 'login', 'email', 'password', 'service_id', 'profil_id', 'active',
+        'must_change_password', 'password_changed_at', 'password_expired', 'password_expiry_notified_at',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var array<int,string>
-     */
-    protected $hidden = [
-        'password',
-        'remember_token',
+    protected $hidden = ['password', 'remember_token'];
+ public $timestamps = false;
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password_changed_at' => 'datetime',
+        'password_expiry_notified_at' => 'datetime',
+        'active' => 'boolean',
+        'must_change_password' => 'boolean',
+        'password_expired' => 'boolean',
     ];
-
-    /**
-     * Les casts à appliquer aux attributs.
-     *
-     * @return array<string,string>
-     */
-    protected function casts(): array
-    {
-        return [
-            'email_verified_at' => 'datetime',
-            'active' => 'boolean',
-        ];
-    }
 
     public function profil()
     {
-        return $this->belongsTo(Profil::class);
+        return $this->belongsTo(Profil::class, 'profil_id');
     }
 
     public function service()
     {
-        return $this->belongsTo(Service::class);
+        return $this->belongsTo(Service::class, 'service_id');
+    }
+
+    public function notificationsFactures()
+    {
+        return $this->hasMany(Notification::class, 'user_id');
+    }
+
+    public function getFullNameAttribute()
+    {
+        return strtoupper($this->name) . ' ' . ucfirst($this->prenom);
+    }
+
+    public function passwordExpiringSoon()
+    {
+        if (!$this->password_changed_at) return false;
+        $age = Carbon::parse($this->password_changed_at)->diffInDays(now());
+        return $age >= 0 && $age < 1;  // Ajusté pour test (au lieu de 25-30)
+    }
+
+    public function daysUntilExpiry()
+    {
+        if (!$this->password_changed_at) return 1;  // Ajusté pour test (au lieu de 30)
+        return 1 - Carbon::parse($this->password_changed_at)->diffInDays(now());
+    }
+
+    public function isPasswordExpired()
+    {
+
+        if (!$this->password_changed_at) return false;
+        return Carbon::parse($this->password_changed_at)->diffInDays(now()) > 1;  // Ajusté pour test (au lieu de 30)
+    }
+
+    public function notifications()
+    {
+        // Un utilisateur a plusieurs notifications
+        return $this->hasMany(Notification::class, 'user_id');
+    }
+
+    public function getPasswordAge()
+    {
+        return $this->password_changed_at ? Carbon::parse($this->password_changed_at)->diffInDays(now()) : 0;
     }
 }

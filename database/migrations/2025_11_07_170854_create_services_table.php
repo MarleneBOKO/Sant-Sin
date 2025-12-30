@@ -1,4 +1,5 @@
 <?php
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -8,18 +9,17 @@ return new class extends Migration {
     {
         Schema::create('services', function (Blueprint $table) {
             $table->id();
-          $table->integer('codeserv')->unique();
-
-
+            $table->integer('codeserv')->unique();
             $table->string('libelle');
 
-            $table->foreignId('direction_id')->constrained('directions')->onDelete('cascade');
+            // Utilisez 'codedir' comme clé étrangère vers 'directions.codedir'
+            $table->integer('codedir');  // Ou integer si 'codedir' est numérique
+            $table->foreign('codedir')->references('codedir')->on('directions')->onDelete('cascade');
 
             // Un service peut être aussi une direction (optionnel)
             $table->boolean('is_direction')->default(false);
-$table->timestamp('created_at')->nullable();
-$table->timestamp('updated_at')->nullable();
-
+            $table->timestamp('created_at')->nullable();
+            $table->timestamp('updated_at')->nullable();
         });
     }
 

@@ -12,7 +12,7 @@ public $timestamps = false;
 
 public function direction()
 {
-    return $this->belongsTo(Direction::class);
+    return $this->belongsTo(Direction::class, 'codedir', 'codedir');
 }
 
 public function users()

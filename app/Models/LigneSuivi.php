@@ -13,7 +13,7 @@ class LigneSuivi extends Model
 
     protected $fillable = [
         'Id_Ligne',
-        'Code_partenaire', // Nouveau : remplace Code_Prestataire et Code_Souscripteur
+        'Code_Partenaire', // Nouveau : remplace Code_Prestataire et Code_Souscripteur
         'Reference_Facture',
         'Mois_Facture',
         'Date_Debut',
@@ -67,8 +67,8 @@ class LigneSuivi extends Model
         'Date_Debut' => 'datetime',
         'Date_Fin' => 'datetime',
         'Date_Enregistrement' => 'datetime',
-        'Date_Demande' => 'datetime',
-        'Date_Transmission' => 'datetime',
+        //'Date_Demande' => 'datetime', // Removed to prevent casting issues with nvarchar column
+         'Date_Transmission' => 'datetime',
         'Date_Cloture' => 'datetime',
         'Date_Depot' => 'datetime',
         'Date_fin_reglementaire' => 'datetime',
@@ -79,9 +79,11 @@ class LigneSuivi extends Model
         'dateRetourMedecin' => 'date',
         'datesaisiereg' => 'date',
         'dateenrtrans' => 'datetime',
-        'datecorretion' => 'datetime',
+       // 'datecorretion' => 'datetime',
         'Montant_Ligne' => 'decimal:2',
         'montrejete' => 'decimal:2',
+         'Numero_Reception' => 'string',
+         'Reference_Facture' => 'string'
     ];
 
     /**
@@ -95,7 +97,7 @@ class LigneSuivi extends Model
      */
     public function partenaire()
     {
-        return $this->belongsTo(Partenaire::class, 'Code_partenaire', 'id');
+        return $this->belongsTo(Partenaire::class, 'Code_Partenaire', 'id');
     }
 
     /**
@@ -133,10 +135,10 @@ class LigneSuivi extends Model
     /**
      * Relation avec le rédacteur (User)
      */
-    public function redacteur()
+    /*public function redacteur()
     {
         return $this->belongsTo(\App\Models\User::class, 'Redacteur');
-    }
+    }*/
 
     /**
      * Détermine si la facture est déjà traitée
@@ -156,16 +158,84 @@ class LigneSuivi extends Model
         return $this->estTraitee();
     }
 
-    /**
-     * Méthodes utilitaires pour vérifier le type (optionnel, pour faciliter l'usage)
-     */
-    public function isPrestataire()
+
+
+
+
+
+    public function redacteur()
     {
-        return $this->partenaire && $this->partenaire->type === 'prestataire';
+        // Éviter l'erreur SQL en ne chargeant que si c'est numérique
+        if ($this->Redacteur && is_numeric($this->Redacteur)) {
+            return $this->belongsTo(User::class, 'Redacteur', 'id');
+        }
+
+        return null;
     }
 
-    public function isSouscripteur()
+    /**
+     * Accessor intelligent pour obtenir le nom du rédacteur
+     * Gère automatiquement ID numérique OU nom en texte
+     */
+    public function getRedacteurNomAttribute()
     {
-        return $this->partenaire && $this->partenaire->type === 'souscripteur';
+        // Si le champ est vide
+        if (empty($this->Redacteur)) {
+            return 'Non défini';
+        }
+
+        // Si c'est un ID numérique, récupérer le nom de l'utilisateur
+        if (is_numeric($this->Redacteur)) {
+            try {
+                $user = User::find($this->Redacteur);
+                return $user ? $user->name : 'Utilisateur #' . $this->Redacteur;
+            } catch (\Exception $e) {
+                \Log::error('Erreur chargement rédacteur', [
+                    'id' => $this->Redacteur,
+                    'ligne_id' => $this->Id_Ligne,
+                    'error' => $e->getMessage()
+                ]);
+                return 'Erreur chargement (ID: ' . $this->Redacteur . ')';
+            }
+        }
+
+        // Sinon, c'est du texte direct (ancien format), le retourner tel quel
+        return $this->Redacteur;
+    }
+
+    /**
+     * Vérifier si le rédacteur est un ID valide
+     */
+    public function getHasValidRedacteurAttribute()
+    {
+        return !empty($this->Redacteur) && is_numeric($this->Redacteur);
+    }
+
+
+    /**
+     * Scope pour éviter le chargement automatique du rédacteur
+     */
+    public function scopeWithoutRedacteur($query)
+    {
+        return $query->without('redacteur');
+    }
+
+    /**
+     * Relation avec le prestataire (si type = 'prestataire')
+     */
+    public function prestataire()
+    {
+        return $this->belongsTo(Partenaire::class, 'Code_Partenaire')->where('type', 'prestataire');
+    }
+    /**
+     * Relation avec le souscripteur (si type = 'souscripteur')
+     */
+    public function souscripteur()
+    {
+        return $this->belongsTo(Partenaire::class, 'Code_Partenaire')->where('type', 'souscripteur');
     }
 }
+
+
+
+

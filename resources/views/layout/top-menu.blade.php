@@ -21,7 +21,7 @@
             <div class="-intro-x breadcrumb breadcrumb--light mr-auto">
                 <a href="" class="">Application</a>
                 <i data-feather="chevron-right" class="breadcrumb__icon"></i>
-                <a href="" class="breadcrumb--active">Dashboard</a>
+                <a href="" class="breadcrumb--active">DashboardA</a>
             </div>
             <!-- END: Breadcrumb -->
             <!-- BEGIN: Search -->
@@ -89,7 +89,7 @@
                 </div>
                 <div class="notification-content pt-2 dropdown-box">
                     <div class="notification-content__box dropdown-box__content box dark:bg-dark-6">
-                        <div class="notification-content__title">Notifications</div>
+                        <div class="notification-content__title">Notification</div>
                         @foreach (array_slice($fakers, 0, 5) as $key => $faker)
                             <div class="cursor-pointer relative flex items-center {{ $key ? 'mt-5' : '' }}">
                                 <div class="w-12 h-12 flex-none image-fit mr-1">

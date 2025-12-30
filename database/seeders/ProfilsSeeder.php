@@ -20,7 +20,9 @@ class ProfilsSeeder extends Seeder
             ['code_profil' => 'RSTP', 'libelle' => 'Régleur Sinistre Tiers Payant'],
             ['code_profil' => 'RSI', 'libelle' => 'Régleur Sinistre Intermediaire '],
             ['code_profil' => 'ADMIN', 'libelle' => 'Administrateur'],
-        ];
+                ['code_profil' => 'RRSTP', 'libelle' => 'Responsable Régleur Sinistre Tiers Payant'],
+                ['code_profil' => 'RRSI', 'libelle' => 'Responsable Régleur Sinistre Intermediaire'],
+            ];
 
 
         foreach ($profils as $profil) {

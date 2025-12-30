@@ -60,18 +60,19 @@
                                     {{ $cour->nbr ?: 'À jour' }}
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
-                                    <button class="trans bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg transition-all duration-200 flex items-center justify-center mx-auto"
-                                            data-Refligne="{{ $cour->numcour }}"
-                                            data-Prest="{{ $cour->expediteur }}"
-                                            data-deb="{{ $cour->objet }}"
-                                            data-mont="{{ $cour->objet }}"
-                                            data-an="{{ $cour->annee }}"
-                                            data-refFact="{{ $cour->codecour }}"
-                                            data-toggle="modal"
-                                            data-target="#transM"
-                                            title="Sélectionner ligne">
-                                        <i class="fas fa-edit mr-1"></i> Éditer
-                                    </button>
+                                    <button
+    type="button"
+    class="trans bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg transition-all duration-200 flex items-center justify-center mx-auto"
+    data-refligne="{{ $cour->NumCour }}"
+    data-prest="{{ $cour->expediteur }}"
+    data-deb="{{ $cour->Objet }}"
+    data-an="{{ $cour->annee }}"
+    data-reffact="{{ $cour->CodeCour }}"
+    title="Sélectionner ligne"
+>
+    <i class="fas fa-edit mr-1"></i> Éditer
+</button>
+
                                 </td>
                             </tr>
                         @empty
@@ -81,7 +82,7 @@
                         @endforelse
                     </tbody>
                 </table>
-                
+
             </div>
         </div>
     </div>
@@ -93,7 +94,7 @@
         <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-6xl sm:w-full max-h-screen overflow-y-auto">
             <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
                 <div id="trans_ici" class="text-center">
-                    {{-- Chargé via AJAX --}}
+                    {{-- Chargé via AJAX : Le formulaire sera inséré ici --}}
                     <div class="flex flex-col items-center justify-center p-8">
                         <i class="fas fa-spinner fa-spin text-3xl text-blue-600 mb-4"></i>
                         <p class="text-gray-600">Chargement du formulaire de saisie...</p>
@@ -101,7 +102,7 @@
                 </div>
             </div>
             <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                <button type="button" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm" onclick="$('#transM').removeClass('hidden').fadeOut();">
+                <button type="button" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm" onclick="$('#transM').addClass('hidden').fadeOut();">
                     Fermer
                 </button>
             </div>
@@ -199,85 +200,253 @@
 </style>
 @endpush
 
-@push('scripts')
 <!-- jQuery et DataTables (CDN comme avant) -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/responsive/2.4.1/js/dataTables.responsive.min.js"></script>
 
 <script>
+/**
+    * Script de gestion des courriers en instance
+    * Gère l'ouverture du modal et le chargement AJAX du formulaire de saisie
+    */
+
 $(document).ready(function() {
-    // Initialisation DataTables (comme votre JS : scrollX/Y, tri col 6 DESC, français)
-    $('#dtHorizontalVerticalExample').DataTable({
-        "scrollX": true,
-        "scrollY": "400px",  // Hauteur fixe comme votre 400
-        "scrollCollapse": true,
-        "paging": true,
-        "searching": true,
-        "ordering": true,
-        "info": true,
-        "responsive": true,
-        "pageLength": 25,
-        "lengthMenu": [[10, 25, 50, -1], [10, 25, 50, "Tous"]],
-        "order": [[6, 'desc']],  // Tri par Date Clôture estimée (col 6) DESC
-        "language": {
-            "url": "https://cdn.datatables.net/plug-ins/1.13.6/i18n/fr-FR.json"  // Français
-        },
-        "dom": '<"top"lf>rt<"bottom"ip><"clear">',  // Layout : length/filter + table + info/paginate
-        "drawCallback": function() {
-            // Réapplique hover Tailwind après redraw
-            $('tbody tr').hover(
-                function() { $(this).addClass('bg-gray-50'); },
-                function() { $(this).removeClass('bg-gray-50'); }
-            );
-        }
-    });
+         console.log('✅ Script courrier-instance chargé avec succès');
 
-    // Tooltip sur boutons (si pas de Bootstrap, utilisez title ou plugin)
-    $('[title]').tooltipster ? $('[title]').tooltipster() : null;  // Optionnel : ajoutez Tooltipster si besoin
+         // Configuration
+         const CONFIG = {
+              selectors: {
+                       table: '#dtHorizontalVerticalExample',
+                       modal: '#transM',
+                       modalContent: '#trans_ici',
+                       editButton: '.trans'
+              },
+              ajax: {
+                       timeout: 10000,
+                       retryAttempts: 2
+              }
+         };
 
-    // AJAX pour charger modal (adapté de votre JS : route Laravel)
-    $('.trans').on('click', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
+         // ============================================
+         // INITIALISATION DATATABLE
+         // ============================================
+         const dataTable = $(CONFIG.selectors.table).DataTable({
+              scrollX: true,
+              scrollY: "400px",
+              scrollCollapse: true,
+              paging: true,
+              searching: true,
+              ordering: true,
+              info: true,
+              responsive: true,
+              pageLength: 25,
+              lengthMenu: [[10, 25, 50, -1], [10, 25, 50, "Tous"]],
+              order: [[6, 'desc']],
+              language: {
+                       url: "https://cdn.datatables.net/plug-ins/1.13.6/i18n/fr-FR.json"
+              },
+              dom: '<"top"lf>rt<"bottom"ip><"clear">',
+              drawCallback: function() {
+                       // Réapplique les styles Tailwind après redraw
+                       $('tbody tr').hover(
+                            function() { $(this).addClass('bg-gray-50'); },
+                            function() { $(this).removeClass('bg-gray-50'); }
+                       );
+              }
+         });
 
-        var numCour = $(this).data('Refligne');
-        var expe = $(this).data('Prest');
-        var objet = $(this).data('Deb');  // data-deb → dataDeb (camelCase)
-        var annee = $(this).data('An');
-        var codecour = $(this).data('RefFact');
+         console.log('✅ DataTable initialisé avec', $(CONFIG.selectors.table + ' tbody tr').length, 'lignes');
 
-        // Loading spinner Tailwind
-        $('#trans_ici').html(`
-            <div class="flex flex-col items-center justify-center p-8">
-                <i class="fas fa-spinner fa-spin text-3xl text-blue-600 mb-4 animate-spin"></i>
-                <p class="text-gray-600 text-lg">Chargement du formulaire de saisie...</p>
-            </div>
-        `);
+         // ============================================
+         // GESTION DU MODAL
+         // ============================================
 
-        // Montre modal avec animation
-        $('#transM').removeClass('hidden').fadeIn(300);
+         /**
+           * Affiche le modal avec un loader
+           */
+         function showModalWithLoader() {
+              $(CONFIG.selectors.modalContent).html(`
+                       <div class="flex flex-col items-center justify-center p-8">
+                            <i class="fas fa-spinner fa-spin text-3xl text-blue-600 mb-4 animate-spin"></i>
+                            <p class="text-gray-600 text-lg">Chargement du formulaire de saisie...</p>
+                       </div>
+              `);
+              $(CONFIG.selectors.modal).removeClass('hidden').fadeIn(300);
+         }
 
-        // AJAX vers route Laravel (adaptez URL si besoin)
-        $.ajax({
-            url: `/courriers/${numCour}/saisie-modal`,  // Route : courriers/{numCour}/saisie-modal
-            type: 'GET',
-            data: {
-                id: numCour,
-                expe: expe,
-                objet: objet,
-                annee: annee,
-                codecour: codecour
-            },
-            cache: false,
-            success: function(result) {
-                $('#trans_ici').html(result);
-                // Scroll to top modal si long
-                $('#transM .modal-content').animate({ scrollTop: 0 }, 300);
-            },
-            error: function(xhr, status, error) {
-                console.error('Erreur AJAX:', error);
-                $('#trans_ici').html(`
-                    <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-                        <i class="fas fa-exclamation-triangle text-red-500 text-2xl mb-2"></i>
-                        <p class="text-red-700">Erreur de
+         /**
+           * Affiche une erreur dans le modal
+           */
+         function showModalError(message, details = '') {
+              $(CONFIG.selectors.modalContent).html(`
+                       <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                            <i class="fas fa-exclamation-triangle text-red-500 text-3xl mb-3"></i>
+                            <p class="text-red-700 font-medium text-lg">${message}</p>
+                            ${details ? `<p class="text-gray-600 text-sm mt-2">${details}</p>` : ''}
+                            <button onclick="$('#transM').addClass('hidden').fadeOut();"
+                                          class="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">
+                                     Fermer
+                            </button>
+                       </div>
+              `);
+         }
+
+         /**
+           * Charge le formulaire via AJAX
+           */
+         function loadCourrierForm(data) {
+              console.log('📡 Envoi requête AJAX avec données:', data);
+
+              // Construction de l'URL avec les paramètres
+              const url = `/courriers/${data.numCour}/saisie-modal`;
+              const params = new URLSearchParams({
+                       expe: data.expe || '',
+                       objet: data.objet || '',
+                       annee: data.annee || new Date().getFullYear(),
+                       codecour: data.codecour || ''
+              }).toString();
+
+              const fullUrl = `${url}?${params}`;
+              console.log('🔗 URL complète:', fullUrl);
+
+              $.ajax({
+                       url: fullUrl,
+                       type: 'GET',
+                       timeout: CONFIG.ajax.timeout,
+                       cache: false,
+                       beforeSend: function(xhr) {
+                            console.log('⏳ Requête AJAX en cours...');
+                       },
+                       success: function(result) {
+                            console.log('✅ Réponse AJAX reçue');
+                            $(CONFIG.selectors.modalContent).html(result);
+
+                            // Scroll to top du modal
+                            $(CONFIG.selectors.modal + ' .overflow-y-auto').animate({
+                                     scrollTop: 0
+                            }, 300);
+                       },
+                       error: function(xhr, status, error) {
+                            console.error('❌ Erreur AJAX:', {
+                                     status: xhr.status,
+                                     statusText: xhr.statusText,
+                                     error: error,
+                                     response: xhr.responseText
+                            });
+
+                            let errorMessage = 'Erreur de chargement du formulaire';
+                            let errorDetails = '';
+
+                            switch (xhr.status) {
+                                     case 404:
+                                          errorMessage = 'Courrier non trouvé';
+                                          errorDetails = 'Le courrier demandé n\'existe pas dans la base de données.';
+                                          break;
+                                     case 500:
+                                          errorMessage = 'Erreur serveur';
+                                          errorDetails = 'Une erreur s\'est produite sur le serveur. Veuillez réessayer.';
+                                          break;
+                                     case 0:
+                                          errorMessage = 'Erreur de connexion';
+                                          errorDetails = 'Impossible de contacter le serveur. Vérifiez votre connexion.';
+                                          break;
+                                     default:
+                                          errorDetails = `Code erreur: ${xhr.status} - ${error}`;
+                            }
+
+                            showModalError(errorMessage, errorDetails);
+                       }
+              });
+         }
+
+         // ============================================
+         // ÉVÉNEMENT CLIC SUR BOUTON ÉDITER
+         // ============================================
+
+         // ⚠️ IMPORTANT : Utiliser la délégation d'événements pour les éléments dynamiques
+         $(document).on('click', CONFIG.selectors.editButton, function(e) {
+              e.preventDefault();
+              e.stopPropagation();
+
+              console.log('🖱️ Bouton "Éditer" cliqué');
+
+              // ✅ CORRECTION : Récupération correcte des attributs data-*
+              // Les attributs HTML data-Refligne deviennent data-refligne en jQuery
+              const $button = $(this);
+              const courrierData = {
+                       numCour: $button.attr('data-refligne') || $button.data('refligne'),
+                       expe: $button.attr('data-prest') || $button.data('prest'),
+                       objet: $button.attr('data-deb') || $button.data('deb'),
+                       annee: $button.attr('data-an') || $button.data('an'),
+                       codecour: $button.attr('data-reffact') || $button.data('reffact')
+              };
+
+              console.log('📋 Données récupérées du bouton:', courrierData);
+
+              // Validation des données
+              if (!courrierData.numCour) {
+                       console.error('❌ Numéro de courrier manquant!');
+                       alert('Erreur : Numéro de courrier manquant. Veuillez rafraîchir la page.');
+                       return;
+              }
+
+              // Afficher le modal et charger le formulaire
+              showModalWithLoader();
+              loadCourrierForm(courrierData);
+         });
+
+         // ============================================
+         // FERMETURE DU MODAL
+         // ============================================
+
+         // Fermeture au clic sur le fond
+         $(CONFIG.selectors.modal).on('click', function(e) {
+              if (e.target === this) {
+                       $(this).addClass('hidden').fadeOut(300);
+              }
+         });
+
+         // Fermeture avec la touche Échap
+         $(document).on('keydown', function(e) {
+              if (e.key === 'Escape' && !$(CONFIG.selectors.modal).hasClass('hidden')) {
+                       $(CONFIG.selectors.modal).addClass('hidden').fadeOut(300);
+              }
+         });
+
+         // ============================================
+         // TOOLTIPS (Optionnel)
+         // ============================================
+
+         if (typeof $.fn.tooltip !== 'undefined') {
+              $('[data-toggle="tooltip"]').tooltip();
+         }
+
+         console.log('✅ Tous les événements sont initialisés');
+});
+
+// ============================================
+// FONCTIONS GLOBALES (pour les boutons inline)
+// ============================================
+
+/**
+    * Ferme le modal (appelé depuis les boutons HTML)
+    */
+window.closeCourrierModal = function() {
+         $('#transM').addClass('hidden').fadeOut(300);
+};
+
+/**
+    * Ferme le modal de déconnexion
+    */
+window.closeLogoutModal = function() {
+         $('#logoutModal').addClass('hidden').fadeOut(300);
+};
+
+/**
+    * Ouvre le modal de déconnexion
+    */
+window.openLogoutModal = function() {
+         $('#logoutModal').removeClass('hidden').fadeIn(300);
+};
+</script>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class FactureController extends Controller
 {
@@ -41,6 +42,19 @@ class FactureController extends Controller
 
             Log::info('Paramètres reçus pour listing : ', $params);
             $resultats = $this->getResultats($params);
+            $perPage = 5;
+    $currentPage = $request->get('page', 1);
+    $factures = new LengthAwarePaginator(
+        $resultats->forPage($currentPage, $perPage),  // Éléments de la page actuelle
+        $resultats->count(),  // Nombre total d'éléments
+        $perPage,
+        $currentPage,
+        [
+            'path' => $request->url(),
+            'pageName' => 'page',
+    ]
+);   
+$factures->appends($request->query());  // Garde les filtres dans l'URL
         }
 
         return view('pages.listing-reporting', [
@@ -72,7 +86,8 @@ class FactureController extends Controller
                 $query = $this->buildQueryRecues($reseau, $statutReglement);
                 break;
             case 'courrier':
-                return $this->getCourriers($params['type_courrier'], $params['nature'], $dateDebut, $dateFin);
+                $courriers = $this->getCourriers($params['type_courrier'], $params['nature'], $dateDebut, $dateFin);
+                return $this->paginateCollection($courriers, 15, request()->get('page', 1));
             case 'instance':
                 $query = $this->buildQueryInstance($reseau);
                 break;
@@ -80,7 +95,7 @@ class FactureController extends Controller
                 $query = $this->buildQueryEtatReglement($reseau, $finperiode);
                 break;
             default:
-                return collect([]);
+                return $this->paginateCollection(collect([]), 15, request()->get('page', 1));
         }
 
         $finalQuery = "SELECT * FROM ({$query}) AS tb
@@ -92,7 +107,25 @@ class FactureController extends Controller
         $factures = DB::connection('sqlsrv')->select($finalQuery, [$dateDebut, $dateFin]);
         Log::info('Nombre de factures récupérées : ' . count($factures));
 
-        return collect($factures);
+        return $this->paginateCollection(collect($factures), 15, request()->get('page', 1));
+    }
+
+    private function paginateCollection($collection, $perPage, $currentPage)
+    {
+        $total = $collection->count();
+        $offset = ($currentPage - 1) * $perPage;
+        $items = $collection->slice($offset, $perPage);
+
+        return new LengthAwarePaginator(
+            $items,
+            $total,
+            $perPage,
+            $currentPage,
+            [
+                'path' => request()->url(),
+                'pageName' => 'page',
+            ]
+        );
     }
 
     private function getCourriers($typeCourrier, $nature, $dateDebut, $dateFin)
@@ -693,18 +726,21 @@ class FactureController extends Controller
         return $unionQuery;
     }
 
-    private function getInstanceCondition($type)
-    {
-        switch ($type) {
-            case 'instance':
-                return "AND ls.statut_ligne IN (3, 4, 5)";
-            case 'instance_tresorerie':
-                return "AND ls.statut_ligne IN (6, 7)";
-            case 'recues':
-            default:
-                return "AND ls.statut_ligne >= 1";
-        }
+  private function getInstanceCondition($type)
+{
+    switch ($type) {
+        case 'ei': // En Instance
+            return " AND ls.Statut_Ligne NOT IN (4, 8) AND ISNULL(ls.Montant_Reglement, 0) = 0 ";
+        case 'tr': // Traité
+            return " AND ls.Statut_Ligne IN (4, 8) ";
+        case 'An': // Annulé
+            return " AND ls.annuler = 1 ";
+        case 'it': // En instance Trésorerie
+            return " AND ls.datetransMedecin IS NOT NULL AND ls.Date_Transmission IS NULL ";
+        default:
+            return "";
     }
+}
 
     private function getStatutReglementCondition($statutReglement)
     {

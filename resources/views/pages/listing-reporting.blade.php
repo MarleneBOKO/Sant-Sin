@@ -59,35 +59,104 @@
                         </button>
                     </div>
                 </div>
-                <div class="p-4 overflow-x-auto">
-                    <table id="facturesTable" class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">N°</th>
-                                <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                                <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Prestataire</th>
-                                <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Référence</th>
-                                <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Mois</th>
-                                <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant</th>
-                                <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
-                                <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Réseau</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            @foreach($factures as $index => $facture)
-                            <tr class="hover:bg-gray-50">
-                                <td class="px-2 py-2">{{ $index + 1 }}</td>
-                                <td class="px-2 py-2">{{ $facture->Date_Enregistrement ?? '-' }}</td>
-                                <td class="px-2 py-2">{{ $facture->Tiers ?? '-' }}</td>
-                                <td class="px-2 py-2">{{ $facture->Reference_facture ?? '-' }}</td>
-                                <td class="px-2 py-2">{{ $facture->Mois_Facture ?? '-' }}</td>
-                                <td class="px-2 py-2 text-right">{{ number_format($facture->Montant_facture ?? 0, 0, ',', ' ') }}</td>
-                                <td class="px-2 py-2">{{ $facture->transmission ?? '-' }}</td>
-                                <td class="px-2 py-2">{{ $facture->reseau ?? '-' }}</td>
-                            </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+            <div class="p-4 overflow-x-auto">
+                <table id="facturesTable" class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">N°</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date d'enreg.</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Prestataire</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Référence</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">N° Reception</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Mois</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Année</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Période</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date Demande</th>
+                            <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant Facture</th>
+                            <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant Réglé</th>
+                            <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant Rejeté</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Trans. Médecin</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Retour Médecin</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Réseau</th>
+                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rédacteur</th>
+                        </tr>
+                    </thead>
+                   <tbody class="bg-white divide-y divide-gray-200">
+                        @foreach($factures as $index => $facture)
+                        @php
+                            // On récupère le code numérique du statut
+                            $statut = $facture->Statut_Ligne;
+                            // On vérifie s'il y a un montant rejeté pour afficher le badge "Rejetée"
+                            $estRejetee = ($facture->montrejete > 0);
+                        @endphp
+                        <tr class="hover:bg-gray-50 text-sm">
+                            <td class="px-2 py-2">{{ $index + 1 }}</td>
+                            <td class="px-2 py-2">{{ $facture->Date_Enregistrement ?? '-' }}</td>
+                            <td class="px-2 py-2">{{ $facture->Tiers ?? '-' }}</td>
+                            <td class="px-2 py-2">{{ $facture->Reference_facture ?? '-' }}</td>
+                            <td class="px-2 py-2">{{ $facture->Numero_reception ?? '-' }}</td>
+                            <td class="px-2 py-2">{{ $facture->Mois_Facture ?? '-' }}</td>
+                            <td class="px-2 py-2">{{ $facture->annee_facture ?? '-' }}</td>
+                            <td class="px-2 py-2">{{ $facture->date_debut }} au {{ $facture->date_fin }}</td>
+                            <td class="px-2 py-2">{{ $facture->Date_Enregistrement }}</td> {{-- Date demande --}}
+
+                            <td class="px-2 py-2 text-right font-medium">
+                                {{ number_format($facture->Montant_facture ?? 0, 0, ',', ' ') }}
+                            </td>
+                            <td class="px-2 py-2 text-right ">
+                                {{ number_format($facture->Montant_Reglement ?? 0, 0, ',', ' ') }}
+                            </td>
+                            <td class="px-2 py-2 text-right ">
+                                {{ number_format($facture->montrejete ?? 0, 0, ',', ' ') }}
+                            </td>
+
+                        <td class="px-2 py-2 text-center">
+                                    @php
+                                        $statutCode = (int) ($facture->Statut_Ligne ?? 0);
+                                        $libelleBase = $facture->transmission;
+                                        $montantRejete = (float) ($facture->montrejete ?? 0);
+                                    @endphp
+
+                                    {{-- Priorité 1 : Si un montant est rejeté, le statut devient "Rejetée" --}}
+                                    @if($montantRejete > 0)
+                                        <span class=" text-red-800 px-3 py-1 text-xs font-bold  ">
+                                            Rejetée
+                                        </span>
+
+                                    {{-- Priorité 2 : Sinon, on suit le cycle de vie classique --}}
+                                    @elseif($statutCode == 0)
+                                        <span class=" text-yellow-800 px-3 py-1 text-xs font-bold  ">
+                                            Non Traitée
+                                        </span>
+                                    @elseif($statutCode == 1)
+                                        <span class=" text-teal-800 px-3 py-1 text-xs font-bold  ">
+                                            Traitée
+                                        </span>
+                                    @elseif($statutCode == 3)
+                                        <span class=" text-green-800 px-3 py-1 text-xs font-bold ">
+                                            Réglée
+                                        </span>
+                                    @else
+                                        {{-- Pour Clôturée (4), Transmise Médecin (5), etc. --}}
+                                        <span class="bg-blue-100 text-blue-800 px-3 py-1 text-xs font-bold  ">
+                                            {{ $libelleBase ?? 'En cours' }}
+                                        </span>
+                                    @endif
+                            </td>
+
+                            <td class="px-2 py-2">{{ $facture->datetransMedecin ?? '-' }}</td>
+                            <td class="px-2 py-2">{{ $facture->RetourMedecin ?? '-' }}</td>
+                            <td class="px-2 py-2">{{ $facture->reseau ?? '-' }}</td>
+                            <td class="px-2 py-2">{{ $facture->redacteur ?? '-' }}</td>
+                        </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+                {{-- Remplacer $index + 1 par ceci pour avoir le numéro réel sur toutes les pages --}}
+            </div>
+                <div class="px-6 py-4 border-t border-gray-200">
+                    {{ $factures->links() }}
                 </div>
             </div>
             @elseif(request()->has('type_facture'))
@@ -205,7 +274,7 @@
                 </div>
                 <div>
                     <label class="block mb-1 text-sm font-medium">Vu Au :</label>
-                    <input type="date" name="DateS" required max="${new Date().toISOString().split('T')[0]}"
+                    <input type="date" name="DateS"  max="${new Date().toISOString().split('T')[0]}"
                         class="w-full rounded border border-gray-300 px-3 py-2">
                 </div>
             `

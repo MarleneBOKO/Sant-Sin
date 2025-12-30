@@ -8,9 +8,23 @@ use Illuminate\Http\Request;
 use Carbon\Carbon;
 use DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\NotificationService;
+use App\Exports\BordereauTresoExport;
+use Maatwebsite\Excel\Facades\Excel;
+
+//use Illuminate\Support\Facades\DB;
+
 
 class LigneSuiviController extends Controller
 {
+
+    protected $notificationService;
+
+    public function __construct(NotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
+
     public function index()
     {
         $user = auth()->user();
@@ -67,246 +81,313 @@ class LigneSuiviController extends Controller
             ->get();
 
         $annees = DB::table('ligne_suivi')
-            ->whereNotNull('annee_facture')
-            ->where('annee_facture', '<>', Carbon::now()->year)
+            ->whereNotNull('Annee_Facture')
+            ->where('Annee_Facture', '<>', Carbon::now()->year)
             ->distinct()
             ->take(5)
-            ->orderByDesc('annee_facture')
-            ->pluck('annee_facture');
+            ->orderByDesc('Annee_Facture')
+            ->pluck('Annee_Facture');
 
         return view('gestion-factures', compact('factures', 'souscripteurs', 'prestataires', 'moisList', 'annees', 'profil_id'));
     }
 
     public function store(Request $request)
-    {
-        // Déterminer le type de facture selon la source ou les champs présents
-        $isIndividuelle = $request->has('assure') || $request->input('source') !== 'tiersPayant';
+{
+    // Déterminer le type de facture selon la source ou les champs présents
+    $isIndividuelle = $request->has('assure') || $request->input('source') !== 'tiersPayant';
 
+    if ($isIndividuelle) {
+        // Validation pour factures individuelles
+        $request->validate([
+            'assure' => 'required|string|max:255',
+            'idSouscripteur' => 'required|exists:partenaires,id',
+            'numero_reception' => 'nullable|string|max:50',
+            'reference_facture' => 'required|string|max:50',
+            'mois' => 'required|integer|min:1|max:12',
+            'annee' => 'required|string',
+            'date_debut' => 'required|date',
+            'date_fin' => 'required|date|after_or_equal:date_debut',
+            'montant' => 'required|numeric|min:0',
+        ]);
+    } else {
+        // Validation pour factures tiers-payant
+        $request->validate([
+            'Code_partenaire' => 'required|exists:partenaires,id',
+            'Numero_Reception' => 'required|string|max:50',
+            'Reference_Facture' => 'required|string|max:50',
+            'Mois_Facture' => 'required|integer|min:1|max:12',
+            'Annee_Facture' => 'required|string',
+            'Date_Debut' => 'required|date',
+            'Date_Fin' => 'required|date|after_or_equal:Date_Debut',
+            'Montant_Ligne' => 'required|numeric|min:0',
+        ]);
+    }
+        DB::beginTransaction(); // ✅ Démarrer une transaction explicite
+    try {
+        $factureId = null; // ✅ Variable pour stocker l'ID de la facture créée
+        $user = auth()->user();
+        $dateEnregistrement = Carbon::now();
         if ($isIndividuelle) {
-            // Validation pour factures individuelles
-            $request->validate([
-                'assure' => 'required|string|max:255',
-                'idSouscripteur' => 'required|exists:partenaires,id', // Vérifie dans partenaires (sera mappé à Code_partenaire)
-                'numero_reception' => 'nullable|string|max:50',
-                'reference_facture' => 'required|string|max:50',
-                'mois' => 'required|integer|min:1|max:12',
-                'annee' => 'required|string',
-                'date_debut' => 'required|date',
-                'date_fin' => 'required|date|after_or_equal:date_debut',
-                'montant' => 'required|numeric|min:0',
-            ]);
-        } else {
-            // Validation pour factures tiers-payant
-            $request->validate([
-                'Code_partenaire' => 'required|exists:partenaires,id', // Corrigé : utilise Code_partenaire directement
-                'Numero_Reception' => 'required|string|max:50',
-                'Reference_Facture' => 'required|string|max:50',
-                'Mois_Facture' => 'required|integer|min:1|max:12',
-                'Annee_Facture' => 'required|string',
-                'Date_Debut' => 'required|date',
-                'Date_Fin' => 'required|date|after_or_equal:Date_Debut',
-                'Montant_Ligne' => 'required|numeric|min:0',
-            ]);
-        }
+            // Traitement facture individuelle
+            //$dateDebut = Carbon::createFromFormat('Y-m-d', $request->date_debut)->startOfDay();
+             $dateDebut = Carbon::parse($request->date_debut);
+              $dateFin = Carbon::parse($request->date_fin);
+            //$dateFin = Carbon::createFromFormat('Y-m-d', $request->date_fin)->startOfDay();
+            $dateEnregistrement = Carbon::now();
 
-        try {
-            if ($isIndividuelle) {
-                // Traitement facture individuelle
-                $dateDebut = Carbon::createFromFormat('Y-m-d', $request->date_debut)->startOfDay();
-                $dateFin = Carbon::createFromFormat('Y-m-d', $request->date_fin)->startOfDay();
-                $dateEnregistrement = Carbon::now();
 
-                DB::table('Ligne_Suivi')->insert([
-                    'Nom_Assure' => $request->assure,
-                    'Code_partenaire' => (int) $request->idSouscripteur, // Mappé depuis idSouscripteur
-                    'Numero_Reception' => $request->numero_reception,
-                    'Reference_Facture' => $request->reference_facture,
-                    'Date_Debut' => $dateDebut->format('Y-m-d\TH:i:s'),
-                    'Date_Fin' => $dateFin->format('Y-m-d\TH:i:s'),
-                    'Montant_Ligne' => (float) $request->montant,
-                    'Date_Enregistrement' => $dateEnregistrement->format('Y-m-d\TH:i:s'),
-                    'Mois_Facture' => (int) $request->mois,
-                    'Annee_Facture' => $request->annee,
-                    'is_evac' => $request->has('is_evac') ? 1 : 0,
-                    'Statut_Ligne' => 0,
-                    'rejete' => 0,
-                    'Redacteur' => auth()->id(),
-                ]);
-
-                $message = 'Facture individuelle enregistrée avec succès.';
-
-            } else {
-                // Traitement facture tiers-payant
-                $dateDebut = Carbon::createFromFormat('Y-m-d', $request->Date_Debut)->startOfDay();
-                $dateFin = Carbon::createFromFormat('Y-m-d', $request->Date_Fin)->startOfDay();
-                $dateEnregistrement = Carbon::now();
-
-                DB::table('Ligne_Suivi')->insert([
-                    'Nom_Assure' => null,
-                    'Code_partenaire' => (int) $request->Code_partenaire, // Directement depuis le formulaire
-                    'Numero_Reception' => $request->Numero_Reception,
-                    'Reference_Facture' => $request->Reference_Facture,
-                    'Date_Debut' => $dateDebut->format('Y-m-d\TH:i:s'),
-                    'Date_Fin' => $dateFin->format('Y-m-d\TH:i:s'),
-                    'Montant_Ligne' => (float) $request->Montant_Ligne,
-                    'Date_Enregistrement' => $dateEnregistrement->format('Y-m-d\TH:i:s'),
-                    'Mois_Facture' => (int) $request->Mois_Facture,
-                    'Annee_Facture' => $request->Annee_Facture,
-                    'is_evac' => 0,
-                    'Statut_Ligne' => 0,
-                    'rejete' => 0,
-                    'Redacteur' => auth()->id(),
-                ]);
-
-                $message = 'Facture tiers-payant enregistrée avec succès.';
-            }
-
-            return redirect()->route('gestion-factures')
-                ->with('success', $message);
-
-        } catch (\Exception $e) {
-            \Log::error('Erreur lors de la création de la facture: ' . $e->getMessage());
-            return redirect()->back()
-                ->withInput()
-                ->with('error', 'Erreur: ' . $e->getMessage());
-        }
-    }
-
-    // Méthode pour afficher le modal d'édition
-    public function editModal(Request $request)
-    {
-        $id = $request->id;
-        $ligne = LigneSuivi::with(['partenaire'])->findOrFail($id); // Utilise partenaire
-
-        // Récupérer les souscripteurs pour le select
-        $souscripteurs = Partenaire::where('type', 'souscripteur')->orderBy('nom')->get();
-        $prestataires = Partenaire::where('type', 'prestataire')->orderBy('nom')->get();
-
-        return view('pages.edit_modal', compact('ligne', 'souscripteurs', 'prestataires'));
-    }
-
-    // Méthode pour mettre à jour la facture
-    public function update(Request $request, $id)
-    {
-        try {
-            // ✅ 1. Valider les données
-            $validatedData = $request->validate([
-                'Reference_Facture' => 'required|string|max:255',
-                'Mois_Facture' => 'required|integer|min:1|max:12',
-                'Date_Debut' => 'required|date',
-                'Date_Fin' => 'required|date|after_or_equal:Date_Debut',
-                'Montant_Ligne' => 'required|numeric|min:0',
-                'Annee_Facture' => 'nullable|integer|min:2020|max:' . (date('Y') + 1),
-                'Nom_Assure' => 'nullable|string|max:255',
-                'Code_partenaire' => 'nullable|exists:partenaires,id', // Corrigé : utilise Code_partenaire
-                'Date_Reception' => 'nullable|date',
-                'Date_Enregistrement' => 'nullable|date',
-                'datetransMedecin' => 'nullable|date',
-                'Numero_Reception' => 'nullable|string|max:50',
-                'is_evac' => 'nullable|boolean',
-            ]);
-
-            // ✅ 2. Charger la ligne à mettre à jour
-            $ligne = LigneSuivi::findOrFail($id);
-
-            // ✅ 3. Vérifier les permissions si nécessaire
-            $user = auth()->user();
-            if (!$this->canEditFacture($ligne, $user)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Vous n\'avez pas les droits pour modifier cette facture'
-                ], 403);
-            }
-
-            // ✅ 4. Préparer les données à mettre à jour
-            $updateData = [
-                'Reference_Facture' => $validatedData['Reference_Facture'],
-                'Mois_Facture' => $validatedData['Mois_Facture'],
-                'Date_Debut' => $validatedData['Date_Debut'],
-                'Date_Fin' => $validatedData['Date_Fin'],
-                'Montant_Ligne' => $validatedData['Montant_Ligne'],
-                'Annee_Facture' => $validatedData['Annee_Facture'] ?? date('Y'),
-                'Numero_Reception' => $validatedData['Numero_Reception'] ?? null,
+            // ✅ Utiliser insertGetId pour récupérer l'ID
+            $factureId = DB::table('Ligne_Suivi')->insertGetId([
+                'Nom_Assure' => $request->assure,
+                'Code_partenaire' => (int) $request->idSouscripteur,
+                'Numero_Reception' => $request->numero_reception,
+                'Reference_Facture' => $request->reference_facture,
+                'Date_Debut' => $dateDebut,
+                'Date_Fin' => $dateFin,
+                'Montant_Ligne' => (float) $request->montant,
+                'Date_Enregistrement' => $dateEnregistrement,
+                'Mois_Facture' => (int) $request->mois,
+                'Annee_Facture' => $request->annee,
                 'is_evac' => $request->has('is_evac') ? 1 : 0,
-                'Redacteur' => $user->id,
-            ];
+                'Statut_Ligne' => 0,
+                'rejete' => 0,
+                 'redacteur' => $user->name // ✅ Utiliser l'ID au lieu du nom
+            ]);
 
-            // ✅ 5. Champs conditionnels
-            if (isset($validatedData['Nom_Assure'])) {
-                $updateData['Nom_Assure'] = $validatedData['Nom_Assure'];
-            }
+            $message = 'Facture individuelle enregistrée avec succès.';
 
-            if (isset($validatedData['Code_partenaire'])) {
-                $updateData['Code_partenaire'] = $validatedData['Code_partenaire']; // Corrigé
-            }
+        } else {
+            // Traitement facture tiers-payant
+            //   $dateDebut = Carbon::parse($request->date_debut);
+            //   $dateFin = Carbon::parse($request->date_fin);
+            $dateDebut = Carbon::parse($request->Date_Debut);
+            $dateFin   = Carbon::parse($request->Date_Fin);
 
-            // ✅ 6. Gérer les dates optionnelles
-            foreach (['Date_Reception', 'Date_Enregistrement', 'datetransMedecin'] as $dateField) {
-                if (!empty($validatedData[$dateField] ?? null)) {
-                    $updateData[$dateField] = $validatedData[$dateField];
+           // $dateDebut = Carbon::createFromFormat('Y-m-d', $request->Date_Debut)->startOfDay();
+            //$dateFin = Carbon::createFromFormat('Y-m-d', $request->Date_Fin)->startOfDay();
+            $dateEnregistrement = Carbon::now();
+
+            // ✅ Utiliser insertGetId pour récupérer l'ID
+            $factureId = DB::table('Ligne_Suivi')->insertGetId([
+                'Nom_Assure' => null,
+                'Code_partenaire' => (int) $request->Code_partenaire,
+                'Numero_Reception' => $request->Numero_Reception,
+                'Reference_Facture' => $request->Reference_Facture,
+                'Date_Debut' => $dateDebut,
+                'Date_Fin' => $dateFin,
+                'Montant_Ligne' => (float) $request->Montant_Ligne,
+                'Date_Enregistrement' => $dateEnregistrement,
+                'Mois_Facture' => (int) $request->Mois_Facture,
+                'Annee_Facture' => $request->Annee_Facture,
+                'is_evac' => 0,
+                'Statut_Ligne' => 0,
+                'rejete' => 0,
+                'Redacteur' => $user->name
+            ]);
+
+            $message = 'Facture tiers-payant enregistrée avec succès.';
+        }
+
+         if ($factureId) {
+            try {
+                $facture = LigneSuivi::find($factureId);
+
+                if ($facture) {
+                    \Log::info('Création notification pour nouvelle facture', [
+                        'facture_id' => $factureId,
+                        'reference' => $facture->Reference_Facture,
+                        'user_id' => auth()->id()
+                    ]);
+
+                    $this->notificationService->notifierChangementStatut($facture, null, 0);
+
+                    // ✅ Vérifier immédiatement si créée
+                    $notifCount = \DB::table('notifications')
+                        ->where('facture_id', $factureId)
+                        ->count();
+
+                    \Log::info('Notifications créées (avant commit)', [
+                        'count' => $notifCount,
+                        'facture_id' => $factureId
+                    ]);
                 }
+            } catch (\Exception $notifException) {
+                \Log::error('Erreur notification', [
+                    'error' => $notifException->getMessage(),
+                    'trace' => $notifException->getTraceAsString()
+                ]);
             }
-
-            // ✅ 7. Appliquer la mise à jour
-            $ligne->update($updateData);
-
-            // ✅ 8. Log des modifications
-            \Log::info('Facture modifiée', [
-                'ligne_id' => $ligne->getKey(),
-                'user_id' => $user->id,
-                'changes' => $ligne->getChanges()
-            ]);
-
-            // ✅ 9. Retour JSON
-            return response()->json([
-                'success' => true,
-                'message' => 'Facture modifiée avec succès',
-                'data' => [
-                    'id' => $ligne->getKey(),
-                    'reference' => $ligne->Reference_Facture,
-                    'montant' => number_format($ligne->Montant_Ligne, 0, ',', ' ') . ' FCFA'
-                ]
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreurs de validation',
-                'errors' => $e->errors()
-            ], 422);
-
-        } catch (\Exception $e) {
-            \Log::error('Erreur lors de la modification de facture', [
-                'ligne_id' => $id,
-                'user_id' => auth()->id(),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Une erreur est survenue lors de la modification'
-            ], 500);
         }
+        DB::commit(); // ✅ Commit explicite
+
+        // ✅ Vérifier après commit
+        if ($factureId) {
+            $notifCountAfter = \DB::table('notifications')
+                ->where('facture_id', $factureId)
+                ->count();
+
+            \Log::info('Notifications après commit', [
+                'count' => $notifCountAfter,
+                'facture_id' => $factureId
+            ]);
+        }
+
+
+
+      return redirect()->back()
+            ->with('success', $message);
+
+    } catch (\Exception $e) {
+        DB::rollBack(); // ✅ Rollback en cas d'erreur
+
+        \Log::error('Erreur lors de la création de la facture', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return redirect()->back()
+            ->withInput()
+            ->with('error', 'Erreur: ' . $e->getMessage());
+    }
+}
+    // Méthode pour afficher le modal d'édition
+public function editModal(Request $request)
+{
+    $id = $request->id;
+    $ligne = LigneSuivi::without('redacteur')
+        ->with(['partenaire'])
+        ->findOrFail($id);
+
+    // Déterminer le type actuel basé sur la jointure partenaire
+    // Si pas de partenaire (cas rare), on peut par défaut dire 'individuelle' si Nom_Assure existe
+    $typePartenaireActuel = $ligne->partenaire ? $ligne->partenaire->type : ($ligne->Nom_Assure ? 'souscripteur' : 'prestataire');
+
+    $souscripteurs = Partenaire::where('type', 'souscripteur')->orderBy('nom')->get();
+    $prestataires = Partenaire::where('type', 'prestataire')->orderBy('nom')->get();
+
+    return view('pages.edit_modal', compact('ligne', 'souscripteurs', 'prestataires', 'typePartenaireActuel'));
+}
+// Méthode pour mettre à jour la facture
+public function update(Request $request, $id)
+{
+    try {
+        // 1. Validation
+        $validatedData = $request->validate([
+            'Reference_Facture' => 'required|string|max:255',
+            'Mois_Facture' => 'required|integer|min:1|max:12',
+            'Date_Debut' => 'required|date',
+            'Date_Fin' => 'required|date|after_or_equal:Date_Debut',
+            'Montant_Ligne' => 'required|numeric|min:0',
+            'Annee_Facture' => 'nullable|integer|min:2020|max:' . (date('Y') + 1),
+            'Nom_Assure' => 'nullable|string|max:255',
+            'Code_partenaire' => 'nullable|exists:partenaires,id',
+            'Date_Reception' => 'nullable|date',
+            'Date_Enregistrement' => 'nullable|date',
+            'datetransMedecin' => 'nullable|date',
+            'Numero_Reception' => 'nullable|string|max:50',
+            'is_evac' => 'nullable|boolean',
+        ]);
+
+        // 2. Charger la ligne
+        $ligne = LigneSuivi::findOrFail($id);
+         $ligne = LigneSuivi::findOrFail($id);
+
+        // Forcer la mise à jour de Code_partenaire
+        $ligne->Code_partenaire = $request->input('Code_partenaire', $ligne->Code_partenaire);
+        $ligne->save();
+
+        Log::info('Mise à jour Code_partenaire', ['ancien' => $ligne->getOriginal('Code_partenaire'), 'nouveau' => $ligne->Code_partenaire]);
+        // 3. Données à mettre à jour
+        $updateData = [
+            'Reference_Facture' => $validatedData['Reference_Facture'],
+            'Mois_Facture' => $validatedData['Mois_Facture'],
+            'Date_Debut' => Carbon::parse($validatedData['Date_Debut']),
+            'Date_Fin' => Carbon::parse($validatedData['Date_Fin']),
+            'Montant_Ligne' => $validatedData['Montant_Ligne'],
+            'Annee_Facture' => $validatedData['Annee_Facture'] ?? date('Y'),
+            'Numero_Reception' => $validatedData['Numero_Reception'] ?? null,
+            'is_evac' => $request->has('is_evac') ? 1 : 0,
+        ];
+
+        if (isset($validatedData['Nom_Assure'])) {
+            $updateData['Nom_Assure'] = $validatedData['Nom_Assure'];
+        }
+
+        if (isset($validatedData['Code_partenaire'])) {
+            $updateData['Code_partenaire'] = $validatedData['Code_partenaire'];
+        }
+
+        foreach (['Date_Reception', 'Date_Enregistrement', 'datetransMedecin'] as $dateField) {
+            if (!empty($validatedData[$dateField] ?? null)) {
+                $updateData[$dateField] = $validatedData[$dateField];
+            }
+        }
+
+        // 4. Update
+        $ligne->update($updateData);
+
+        // 5. Réponse
+        return response()->json([
+            'success' => true,
+            'message' => 'Facture modifiée avec succès',
+            'data' => [
+                'id' => $ligne->Id_Ligne,
+                'reference' => $ligne->Reference_Facture,
+                'montant' => number_format($ligne->Montant_Ligne, 0, ',', ' ') . ' FCFA',
+            ]
+        ]);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Erreurs de validation',
+            'errors' => $e->errors()
+        ], 422);
+    } catch (\Exception $e) {
+        \Log::error('Erreur modification facture', [
+            'ligne_id' => $id,
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Une erreur est survenue lors de la modification'
+        ], 500);
+    }
+}
+
+
+/**
+ * Vérifier si l'utilisateur peut éditer la facture
+ */
+private function canEditFacture($ligne, $user)
+{
+    // Rôles autorisés (adapte selon tes besoins)
+    $allowedRoles = ['admin'];  // Supérieurs (adapte selon tes rôles)
+
+    // Vérifier le rôle de l'utilisateur (utilise la colonne 'profil' comme dans ta session)
+    $userRole = $user->profil ?? $user->role;  // Adaptez si la colonne s'appelle 'role'
+
+    // Supérieur peut toujours modifier
+    if (in_array($userRole, $allowedRoles)) {
+        return true;
     }
 
-    private function canEditFacture($ligne, $user)
-    {
-        $codeProfil = $user->profil->code_profil ?? null;
-
-        // Admin peut tout modifier
-        if ($codeProfil === 'ADMIN') {
-            return true;
-        }
-
-        // Régleur Sinistre Individuel (RSI) ne peut modifier que les factures individuelles
-        if ($codeProfil === 'RSI') {
-            return !empty($ligne->Nom_Assure) && (!$ligne->partenaire || $ligne->partenaire->type === 'souscripteur');
-        }
-
-        // Autres profils peuvent modifier les factures tiers-payant
-        return $ligne->partenaire && $ligne->partenaire->type === 'prestataire';
+    // Si la facture est transmise (ex. Statut_Ligne > 0), l'auteur ne peut plus modifier
+    if ($ligne->Statut_Ligne == 5) {  // Adaptez la condition selon ta logique de transmission
+        return false;  // Seuls les supérieurs peuvent modifier
     }
+
+    // Si non transmise, le rédacteur original peut éditer
+    if (is_numeric($ligne->Redacteur) && $ligne->Redacteur == $user->id) {
+        return true;
+    }
+
+    return false;
+}
+
+
+
 
     // Route AJAX pour charger le modal
     public function loadEditModal(Request $request)
@@ -319,384 +400,443 @@ class LigneSuiviController extends Controller
     }
 
 
+
 public function traiter(Request $request, $id)
 {
     $request->validate([
         'numero_demande' => 'required|string',
-        'date_demande' => 'required|date',
-        'montant_regle' => 'required|numeric|min:1',
+        'date_demande'   => 'required|date',
+        'montant_regle'  => 'required|numeric|min:1',
     ]);
 
     $ligne = LigneSuivi::findOrFail($id);
 
-    $ligne->Numero_Demande = $request->numero_demande;
-
-    // Fix: Format date properly for SQL Server
-    try {
-        // Parse the date and format it specifically for SQL Server
-        $dateDemande = Carbon::parse($request->date_demande);
-
-        // Option 1: Use ISO format which SQL Server handles better
-        $ligne->Date_Demande = $dateDemande->format('Y-m-d H:i:s');
-
-        // Option 2: Alternative - use Carbon directly (recommended)
-        // $ligne->Date_Demande = $dateDemande;
-
-    } catch (\Exception $e) {
-        return redirect()->back()->with('error', 'Date invalide : ' . $e->getMessage());
+    if ($ligne->Statut_Ligne != 6) {
+        return back()->with('error', 'La facture doit avoir reçu un retour du médecin.');
     }
 
-    $ligne->Montant_Reglement = $request->montant_regle;
-    $ligne->Statut_Ligne = 1;
+    DB::update(
+        "UPDATE Ligne_Suivi
+         SET Numero_demande    = ?,
+             Date_Demande      = ?,
+             Montant_Reglement = ?,
+             Statut_Ligne      = ?
+         WHERE Id_Ligne = ?",
+        [
+            $request->numero_demande,              // nvarchar ✔
+            $request->date_demande ,  // yyyy-mm-dd ✔
+            $request->montant_regle,
+            1,
+            $id
+        ]
+    );
 
-    try {
-        $ligne->save();
-    } catch (\Exception $e) {
-        \Log::error('Error saving ligne_suivi: ' . $e->getMessage());
-        return redirect()->back()->with('error', 'Erreur lors de la sauvegarde: ' . $e->getMessage());
-    }
+    $this->notificationService
+         ->notifierChangementStatut($ligne, 6, 1);
 
-    return redirect()->back()->with('success', 'Facture traitée avec succès');
+    return back()->with('success', 'Facture traitée avec succès');
 }
 
 
-public function rejeter(Request $request, $id)
-{
-    $ligne = LigneSuivi::findOrFail($id);
-
-    if ($ligne->Statut_Ligne == 3 || $ligne->Statut_Ligne == 4) {
-        return redirect()->back()->with('error', 'Impossible de rejeter une facture validée ou clôturée.');
-    }
-
-    $ligne->rejete = '1';
-    $ligne->motif_rejet = $request->motif ?? 'Rejet sans motif';
-    $ligne->save();
-
-    return redirect()->back()->with('success', 'Facture rejetée avec succès');
-}
+    /**
+     * ÉTAPE 4 : Transmission à la trésorerie (1 → 2)
+     * Condition : Doit être traitée (Statut_Ligne = 1)
+     */
 
 
-public function cloturer(Request $request, $id)
-{
-    $ligne = LigneSuivi::findOrFail($id);
-    $ligne->Statut_Ligne = 4;
-    $ligne->save();
-
-return redirect()->back()->with('success', 'Facture cloturer avec succès');
-}
-
-public function valider(Request $request)
+public function transmettreALaTreso(Request $request)
 {
     $request->validate([
         'factures' => 'required|string',
         'date_transmission' => 'required|date',
     ]);
 
-    $ids = explode(',', $request->factures);
-    $dateTransmission = Carbon::parse($request->date_transmission);
+    try {
+        $ids = explode(',', $request->factures);
+        //$dateTransmission = $request->date_transmission;
+         $dateTransmission = Carbon::parse($request->date_transmission);
+        $user = auth()->user();
 
-    LigneSuivi::whereIn('Id_Ligne', $ids)
-        ->where('Statut_Ligne', '!=', 4)  // exclure clôturées
-        ->where('rejete', '!=', 1)        // exclure rejetées
-        ->update([
-            'Date_Transmission' => $dateTransmission,
-            'Statut_Ligne' => 3,          // mettre à jour le statut à 3
+        DB::beginTransaction();
+
+        $updated = LigneSuivi::whereIn('Id_Ligne', $ids)
+            ->where('Statut_Ligne', 1)
+            ->where('rejete', '!=', 1)
+            ->update([
+                'Date_Transmission' => $dateTransmission,  // Maintenant une chaîne formatée
+                'usertransmi' => $user->name,
+                'Statut_Ligne' => 2, // Transmise à la trésorerie
+            ]);
+
+        DB::commit();
+
+        Log::info('Transmission à la trésorerie', [
+            'user_id' => $user->id,
+            'factures' => $ids,
+            'updated' => $updated
         ]);
 
-    return redirect()->back()
-        ->with('success', 'Date de transmission mise à jour pour les factures sélectionnées.');
+        // Générer l'Excel avec les factures transmises
+        $dateDebut = Carbon::parse($request->date_transmission)->format('d/m/Y');  // Assurer un formatage cohérent
+        $dateFin = $dateDebut;  // Ou ajuster si vous avez une vraie date de fin
+
+        return Excel::download(new BordereauTresoExport($ids, $dateDebut, $dateFin), 'bordereau_factures.xlsx');
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('Erreur transmission tréso', ['error' => $e->getMessage()]);
+        return redirect()->back()->with('error', 'Erreur : ' . $e->getMessage());
+    }
 }
 
-
-
-
-
-public function regler(Request $request, $id)
-{
-    $request->validate([
-        'numero_cheque' => 'required|string|max:50',
-        // autres validations si besoin
-    ]);
-
-    $ligne = LigneSuivi::findOrFail($id);
-
-    // Mettre à jour les champs liés au règlement
-    $ligne->Numero_Cheque = $request->input('numero_cheque');
-    $ligne->userSaisieReg = auth()->user()->name;
-    $ligne->datesaisiereg = Carbon::now();
-
-    $ligne->save();
-  return redirect()->back()
-        ->with('success', 'Règlement enregistré avec succès.');
-}
-
-
-
-
-   public function handleRetour(Request $request) {
-       $request->validate(['factures' => 'required|string', 'date_retour' => 'required|date']);
-       $ids = explode(',', $request->factures);
-       $d = Carbon::parse($request->date_retour);
-       $usersaisie = auth()->user();
-       $date_enreg = Carbon::now();
-       $updated = LigneSuivi::whereIn('Id_Ligne', $ids)->where('Statut_Ligne', 5)->update([
-           'Statut_Ligne' => 6, 'dateRetourMedecin' => $d, 'dateEnregRMedecin' => $date_enreg, 'usertransRMedecin' => $usersaisie
-       ]);
-       return response()->json(['success' => $updated > 0, 'message' => $updated > 0 ? "$updated retour(s) enregistré(s) (status 6)" : 'Erreur']);
-   }
-
     /**
-     * Charge le modal pour transmission individuelle (AJAX).
+     * ÉTAPE 5 : Régler la facture (2 → 3)
+     * Condition : Doit être transmise à la tréso (Statut_Ligne = 2)
      */
-    public function loadTransmissionModal(Request $request, $id = null)
-    {
-        if (!$request->ajax()) {
-            return redirect()->back()->with('error', 'Accès non autorisé.');
-        }
-
-        $ligne = LigneSuivi::with(['souscripteur', 'prestataire'])->findOrFail($id);
-        if ($ligne->Statut_Ligne != 3) {
-            return response()->json(['success' => false, 'message' => 'Facture non prête à transmettre.'], 400);
-        }
-
-        return view('pages.modals.transmission_modal', compact('ligne'));
-    }
-
-    /**
-     * Charge le modal pour saisie retour individuelle (AJAX).
-     */
-   public function loadRetourModal(Request $request, $id)
-   {
-       if (!$request->ajax()) {
-           return redirect()->back()->with('error', 'Accès non autorisé.');
-       }
-
-       try {
-           Log::info('loadRetourModal: Tentative de chargement pour ID', ['requested_id' => $id]);
-
-           $ligne = LigneSuivi::find($id);  // Utilisez find() pour éviter les exceptions
-
-           if (!$ligne) {
-               Log::error('loadRetourModal: Ligne non trouvée pour ID', ['id' => $id]);
-               return response()->view('errors.modal_error', [
-                   'message' => 'Facture introuvable pour l\'ID ' . $id
-               ], 404);
-           }
-
-           Log::info('loadRetourModal: Ligne chargée', [
-               'ligne_id' => $ligne->Id_Ligne,  // Utilisez Id_Ligne explicitement
-               'full_ligne' => $ligne->toArray(),
-               'statut_ligne' => $ligne->Statut_Ligne
-           ]);
-
-           if ($ligne->Statut_Ligne != 5) {
-               return response()->view('errors.modal_error', [
-                   'message' => 'Cette facture n\'est pas en attente de retour'
-               ], 400);
-           }
-
-           return view('pages.modals.retour_modal', compact('ligne'));
-
-       } catch (\Exception $e) {
-           Log::error('Erreur loadRetourModal', ['id' => $id, 'error' => $e->getMessage()]);
-           return response()->view('errors.modal_error', ['message' => 'Erreur: ' . $e->getMessage()], 500);
-       }
-   }
-
-
-
-
-    public function transmitBatch(Request $request)
+    public function regler(Request $request, $id)
     {
         $request->validate([
-            'factures' => 'required|string|regex:/^[\d,]+$/u',
-            'date_transmission' => 'required|date',
-        ]);
-
-        try {
-            $ids = array_filter(explode(',', $request->factures), 'is_numeric');
-            if (empty($ids)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Aucune facture valide sélectionnée.'
-                ], 400);
-            }
-
-            $dateTransmission = Carbon::parse($request->date_transmission);
-                    $user = auth()->user();
-
-            $userSaisie = auth()->user();
-            $dateEnreg = Carbon::now();
-
-            $updated = LigneSuivi::whereIn('Id_Ligne', $ids)
-                ->where('Statut_Ligne', 3)
-                ->where('rejete', 0)
-                ->update([
-                    'Statut_Ligne' => 5,
-                    'datetransMedecin' => $dateTransmission,
-                    'dateEnregMedecin' => $dateEnreg,
-                    'usertransMedecin' => $userSaisie,
-                ]);
-
-            Log::info('Transmission Batch', [
-                'user_id' => $userSaisie,
-                'ids' => $ids,
-                'updated_count' => $updated,
-                'date' => $dateTransmission
-            ]);
-
-            return response()->json([
-                'success' => $updated > 0,
-                'message' => $updated > 0
-                    ? "{$updated} facture(s) transmise(s)."
-                    : 'Aucune facture mise à jour.'
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Transmission Batch Error', [
-                'error' => $e->getMessage(),
-                'request' => $request->all()
-            ]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreur serveur: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Individual transmission (single invoice)
-     */
-    public function transmitIndividual(Request $request, $id)
-    {
-        $request->validate([
-            'transmission_date' => 'required|date',
+            'numero_cheque' => 'required|string|max:50',
         ]);
 
         try {
             $ligne = LigneSuivi::findOrFail($id);
 
-            if ($ligne->Statut_Ligne != 3) {
+
+
+            $ligne->Numero_Cheque = $request->numero_cheque;
+            $ligne->userSaisieReg = auth()->user()->name;
+            $ligne->datesaisiereg = Carbon::now();
+            $ligne->Statut_Ligne = 3;
+            $ligne->save();
+
+            Log::info('Facture réglée', [
+                'user_id' => auth()->id(),
+                'facture_id' => $id,
+                'numero_cheque' => $request->numero_cheque
+            ]);
+
+            return redirect()->back()->with('success', 'Règlement enregistré avec succès');
+
+        } catch (\Exception $e) {
+            Log::error('Erreur règlement', [
+                'facture_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+            return redirect()->back()->with('error', 'Erreur : ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * ÉTAPE 6 : Clôturer la facture (3 → 4)
+     * Condition : Doit être réglée (Statut_Ligne = 3)
+     */
+    public function cloturer(Request $request, $id)
+    {
+        try {
+            $ligne = LigneSuivi::findOrFail($id);
+
+
+
+            $ligne->Statut_Ligne = 4; // Clôturée
+              $dateClotureFacture = Carbon::now(); // Date actuelle
+        $ligne->Date_Cloture = $dateClotureFacture;
+            $ligne->userClotureFacture = auth()->user()->name;
+            $ligne->save();
+
+            Log::info('Facture clôturée', [
+                'user_id' => auth()->id(),
+                'facture_id' => $id
+            ]);
+
+            return redirect()->back()->with('success', 'Facture clôturée avec succès');
+
+        } catch (\Exception $e) {
+            Log::error('Erreur clôture', [
+                'facture_id' => $id,
+                'error' => $e->getMessage()
+            ]);
+            return redirect()->back()->with('error', 'Erreur : ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Rejeter une facture (à tout moment sauf si déjà clôturée)
+     */
+  public function rejeter(Request $request, $id)
+{
+    Log::info('ID reçu dans rejeter', ['id' => $id, 'request_id' => $request->input('id')]);
+    try {
+        // Validation des données
+        $request->validate([
+            'motif' => 'required|string|max:500'
+        ]);
+
+        $ligne = LigneSuivi::findOrFail($id);
+
+        // Log avant mise à jour
+        Log::info('Tentative de rejet', [
+            'facture_id' => $id,
+            'ancien_rejete' => $ligne->rejete,
+            'user_id' => auth()->id()
+        ]);
+
+        // Mise à jour avec update() au lieu de set/save
+        $updated = $ligne->update([
+            'rejete' => 1,
+            'motif_rejet' => $request->motif,
+            'date_rejet' => Carbon::now(),
+            'userRejet' => auth()->user()->name,  // Note : c'est 'userRejet' dans votre DB, pas 'userrejet'
+        ]);
+
+        // Vérifier si la mise à jour a réussi
+        if (!$updated) {
+            throw new \Exception('Échec de la mise à jour en base');
+        }
+
+        // Recharger la ligne pour vérifier
+        $ligne->refresh();
+
+        Log::info('Facture rejetée avec succès', [
+            'facture_id' => $id,
+            'nouveau_rejete' => $ligne->rejete,
+            'motif' => $request->motif,
+            'user_id' => auth()->id()
+        ]);
+
+        return redirect()->back()->with('success', 'Facture rejetée avec succès');
+
+    } catch (\Exception $e) {
+        Log::error('Erreur rejet', [
+            'facture_id' => $id,
+            'request_data' => $request->all(),
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return redirect()->back()->with('error', 'Erreur lors du rejet : ' . $e->getMessage());
+    }
+}
+
+
+ public function indexTransmission()
+    {
+     $user = auth()->user();
+        $codeProfil = $user->profil->code_profil ?? null;
+        // Utilisation des codes de profil
+        $isIndividuel = in_array($codeProfil, ['RSI']); // Régleur Sinistre Individuel
+        $isTiersPayant = in_array($codeProfil, ['RSTP']); // Régleur Sinistre Tiers Payant
+        $isAdmin = $codeProfil === 'ADMIN';
+
+        // Récupérer uniquement les factures avec statut 0 (validées) ou 5 (transmises)
+        $query = LigneSuivi::query()
+            ->leftJoin('partenaires', 'Ligne_Suivi.Code_partenaire', '=', 'partenaires.id')
+            ->whereNotNull('Ligne_Suivi.Date_Enregistrement')
+            ->whereIn('Ligne_Suivi.Statut_Ligne', [0, 5]) // Seulement statut 0 et 5
+            ->with(['partenaire']);
+
+        // Filtres selon le profil
+        if ($isIndividuel && !$isTiersPayant) {
+            // Assuré uniquement
+            $query->where(function ($q) {
+                $q->whereNotNull('Ligne_Suivi.Nom_Assure')
+                  ->where(function ($sub) {
+                      $sub->whereNull('Ligne_Suivi.Code_partenaire')
+                          ->orWhere('partenaires.type', 'souscripteur');
+                  });
+            });
+        } elseif ($isTiersPayant && !$isIndividuel) {
+            // Prestataire uniquement
+            $query->whereNotNull('Ligne_Suivi.Code_partenaire')
+                  ->where('partenaires.type', 'prestataire');
+        } elseif ($isIndividuel && $isTiersPayant) {
+            // Les deux
+            $query->where(function ($q) {
+                $q->where(function ($sub) {
+                    $sub->whereNotNull('Ligne_Suivi.Nom_Assure')
+                        ->where(function ($inner) {
+                            $inner->whereNull('Ligne_Suivi.Code_partenaire')
+                                  ->orWhere('partenaires.type', 'souscripteur');
+                        });
+                })->orWhere(function ($sub) {
+                    $sub->whereNotNull('Ligne_Suivi.Code_partenaire')
+                        ->where('partenaires.type', 'prestataire');
+                });
+            });
+        }
+
+        $factures = $query->orderBy('Ligne_Suivi.Date_Enregistrement', 'desc')->get();
+
+        return view('transmission-factures', compact('factures', 'isAdmin', 'isIndividuel'));
+    }
+
+    /**
+     * Transmission multiple (statut 0 → 5)
+     */
+    public function transmitBatch(Request $request)
+    {
+        $request->validate([
+            'factures' => 'required|string',
+            'date_action' => 'required|date',
+        ], [
+            'factures.required' => 'Aucune facture sélectionnée',
+            'date_action.required' => 'La date de transmission est obligatoire',
+            'date_action.date' => 'Format de date invalide'
+        ]);
+
+        try {
+            $factureIds = explode(',', $request->factures);
+            $dateTransmission = Carbon::parse($request->date_action);
+            $user = auth()->user();
+
+            DB::beginTransaction();
+
+            // Vérifier que toutes les factures existent et ont le bon statut
+            $facturesToUpdate = LigneSuivi::whereIn('Id_Ligne', $factureIds)
+                ->where('Statut_Ligne', 0) // Uniquement les factures validées
+                ->get();
+
+            if ($facturesToUpdate->isEmpty()) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
-                    'message' => 'Cette facture n\'est pas prête à être transmise.'
+                    'message' => 'Aucune facture valide à transmettre (vérifiez les statuts)'
                 ], 400);
             }
 
-            $ligne->update([
-                'Statut_Ligne' => 5,
-                'datetransMedecin' => Carbon::parse($request->transmission_date),
-                'dateEnregMedecin' => Carbon::now(),
-                'usertransMedecin' => auth()->user(),
+            // Mise à jour
+            $updated = LigneSuivi::whereIn('Id_Ligne', $factureIds)
+                ->where('Statut_Ligne', 0)
+                ->update([
+                    'datetransMedecin' => $dateTransmission,
+                    'usertransMedecin' => $user->name,
+                    'Statut_Ligne' => 5, // Transmise au médecin
+
+                ]);
+
+            DB::commit();
+
+            Log::info('Transmission batch effectuée', [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'factures_ids' => $factureIds,
+                'date_transmission' => $dateTransmission->format('Y-m-d'),
+                'updated_count' => $updated
             ]);
+
+          $facturesTransmises = LigneSuivi::whereIn('Id_Ligne', $factureIds)
+                ->where('Statut_Ligne', 5)
+                ->get();
+
+            foreach ($facturesTransmises as $facture) {
+                $this->notificationService->notifierChangementStatut($facture, 0, 5);
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Facture transmise avec succès.'
+                'message' => "{$updated} facture(s) transmise(s) au médecin avec succès"
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Transmission Individual Error', [
-                'id' => $id,
-                'error' => $e->getMessage()
+            DB::rollBack();
+
+            Log::error('Erreur lors de la transmission batch', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur: ' . $e->getMessage()
+                'message' => 'Erreur lors de la transmission : ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Batch retour (multiple invoices)
+     * Retour multiple (statut 5 → 6)
      */
-    public function handleRetourBatch(Request $request)
+    public function retourBatch(Request $request)
     {
         $request->validate([
             'factures' => 'required|string',
-            'date_retour' => 'required|date'
+            'date_action' => 'required|date',
+        ], [
+            'factures.required' => 'Aucune facture sélectionnée',
+            'date_action.required' => 'La date de retour est obligatoire',
+            'date_action.date' => 'Format de date invalide'
         ]);
 
-        $ids = explode(',', $request->factures);
-        $dateRetour = Carbon::parse($request->date_retour);
-        $userSaisie = auth()->user();
-        $dateEnreg = Carbon::now();
+        try {
+            $factureIds = explode(',', $request->factures);
+            $dateRetour = Carbon::parse($request->date_action);
+            $user = auth()->user();
 
-        $updated = LigneSuivi::whereIn('Id_Ligne', $ids)
-            ->where('Statut_Ligne', 5)
-            ->update([
-                'Statut_Ligne' => 6,
-                'dateRetourMedecin' => $dateRetour,
-                'dateEnregRMedecin' => $dateEnreg,
-                'usertransRMedecin' => $userSaisie
+            DB::beginTransaction();
+
+            // Vérifier que toutes les factures existent et ont le bon statut
+            $facturesToUpdate = LigneSuivi::whereIn('Id_Ligne', $factureIds)
+                ->where('Statut_Ligne', 5) // Uniquement les factures transmises
+                ->get();
+
+            if ($facturesToUpdate->isEmpty()) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Aucune facture valide pour retour (vérifiez qu\'elles sont bien transmises)'
+                ], 400);
+            }
+
+            // Mise à jour
+            $updated = LigneSuivi::whereIn('Id_Ligne', $factureIds)
+                ->where('Statut_Ligne', 5)
+                ->update([
+                    'dateRetourMedecin' => $dateRetour,
+                    'usertransRMedecin' => $user->name,
+                    'Statut_Ligne' => 6, // Retour reçu
+
+                ]);
+
+            DB::commit();
+
+            Log::info('Retour batch enregistré', [
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'factures_ids' => $factureIds,
+                'date_retour' => $dateRetour->format('Y-m-d'),
+                'updated_count' => $updated
             ]);
 
-        return response()->json([
-            'success' => $updated > 0,
-            'message' => $updated > 0
-                ? "$updated retour(s) enregistré(s)"
-                : 'Aucune facture mise à jour'
-        ]);
-    }
+                 $facturesRetournees = LigneSuivi::whereIn('Id_Ligne', $factureIds)
+                ->where('Statut_Ligne', 6)
+                ->get();
 
-    /**
-     * Individual retour (single invoice)
-     */
-/**
- * Individual retour (single invoice)
- */
-public function handleRetourIndividual(Request $request, $id)
-{
-    // Validation de base
-    if (!is_numeric($id)) {
-        Log::error('handleRetourIndividual: ID invalide', ['id' => $id]);
-        return response()->json(['success' => false, 'message' => 'ID invalide'], 400);
-    }
+            foreach ($facturesRetournees as $facture) {
+                $this->notificationService->notifierChangementStatut($facture, 5, 6);
+            }
 
-    try {
-        $ligne = LigneSuivi::findOrFail($id);
+            return response()->json([
+                'success' => true,
+                'message' => "{$updated} retour(s) enregistré(s) avec succès"
+            ]);
 
-        if ($ligne->Statut_Ligne != 5) {
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Erreur lors de l\'enregistrement des retours', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Cette facture n\'est pas en attente de retour.'
-            ], 400);
+                'message' => 'Erreur lors de l\'enregistrement : ' . $e->getMessage()
+            ], 500);
         }
-
-        // Validation des données du formulaire
-        $request->validate([
-            'date_retour' => 'required|date|after_or_equal:today',  // Ajustez si nécessaire
-            'commentaire' => 'nullable|string|max:500',  // Exemple, ajustez selon vos champs
-        ]);
-
-        // Mise à jour de la ligne
-        $ligne->update([
-            'Statut_Ligne' => 6,  // Retour enregistré
-            'dateRetourMedecin' => Carbon::parse($request->date_retour),
-            'dateEnregRMedecin' => Carbon::now(),
-            'usertransRMedecin' => auth()->user(),
-            // Ajoutez d'autres champs si nécessaire, comme commentaire
-        ]);
-
-        Log::info('Retour Individual enregistré', [
-            'id' => $id,
-            'user_id' => auth()->user()->id,
-            'date_retour' => $request->date_retour
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Retour enregistré avec succès.'
-        ]);
-
-    } catch (\Exception $e) {
-        Log::error('Erreur handleRetourIndividual', ['id' => $id, 'error' => $e->getMessage()]);
-        return response()->json([
-            'success' => false,
-            'message' => 'Erreur: ' . $e->getMessage()
-        ], 500);
     }
-}
+
+
 
 
 public function detailReseau(Request $request)
@@ -1030,239 +1170,142 @@ public function detailReseau(Request $request)
     }
 }
 
+// ==========================================
+// SOLUTION FINALE : MÉTHODE UPDATECORRECTION
+// ==========================================
 
-/**
- * Display unified page for transmission and returns.
- * Fetches invoices ready for transmission (Statut_Ligne=0) AND transmitted waiting return (Statut_Ligne=3).
- */
-public function transmissionRetours()
+public function updateCorrection(Request $request)
 {
-    $user = Auth::user();
-    $profilId = $user->profil->id ?? null;
-    $isAdmin = ($profilId == 5); // Admin : Tous types
-    $isIndividuel = !$isAdmin && ($profilId == 7); // Individuel pur
+ $request->validate([
+ 'id' => 'required|exists:Ligne_Suivi,Id_Ligne',
+ 'MontantF' => 'required|numeric|min:0',
+ 'montantReglement' => 'required|numeric|min:0',
+ 'motifcorretion' => 'nullable|string|max:500',
+ ]);
 
-    Log::info('TransmissionRetours Debug: Profil', [
-        'profil_id' => $profilId,
-        'isAdmin' => $isAdmin,
-        'isIndividuel' => $isIndividuel,
-        'user_id' => $user->id
-    ]);
+ try {
+ $user = auth()->user();
 
-    $factures = collect();
+ // Vérification des permissions
+ if (!in_array($user->profil->code_profil ?? null, ['RRSI', 'RRSTP'])) {
+  return response()->json([
+  'success' => false,
+  'message' => 'Accès refusé.'
+  ], 403);
+ }
 
-    if ($isAdmin) {
-        // Admin : Toutes (stLigne IN [3,5]), sans filtre type
-        $query = DB::connection('sqlsrv')->table('Ligne_Suivi as ls')
-            ->leftJoin('partenaires as p', 'ls.Code_partenaire', '=', 'p.id') // Corrigé : Code_partenaire
-            ->select([
-                'ls.Id_Ligne as id',
-                DB::raw('COALESCE(p.nom, ls.Nom_Assure, \'N/A\') as prest'), // Corrigé : utilise p.nom directement
-                'ls.Numero_Reception',
-                DB::raw('COALESCE(ls.Reference_Facture, ls.Nom_Assure, \'N/A\') as ref'),
-                DB::raw('CONVERT(varchar, ls.Date_Debut, 103) as deb'),
-                DB::raw('CONVERT(varchar, ls.Date_Fin, 103) as fin'),
-                DB::raw('CAST(ls.Montant_Ligne AS INT) as mtligne'),
-                DB::raw('CONVERT(varchar, ls.Date_Enregistrement, 103) as dtEnreg'),
-                DB::raw('CONVERT(varchar, ls.datetransMedecin, 103) as dtTransMed'),
-                DB::raw('CONVERT(varchar, ls.dateRetourMedecin, 103) as dtRetourMed'),
-                DB::raw('CONVERT(varchar, ls.Date_Transmission, 103) as dtTrans'),
-                DB::raw('CONVERT(varchar, ls.Date_Enregistrement, 103) as datetransestim'),
-                DB::raw('CONVERT(varchar, DATEADD(day, 1, ls.Date_Enregistrement), 103) AS dateretestim'),
-                'ls.Statut_Ligne as stLigne',
-                DB::raw('CASE WHEN ls.dateRetourMedecin IS NOT NULL THEN 1 ELSE 0 END as retour_recu'),
-                'ls.Code_partenaire', // Corrigé : Code_partenaire
-                DB::raw('CASE
-                    WHEN p.type = \'prestataire\' THEN \'Tiers-Payant\'
-                    WHEN p.type = \'souscripteur\' THEN \'Individuel\'
-                    ELSE \'Autre\' END as type_label'), // Corrigé : utilise p.type
-                DB::raw('CASE ls.Statut_Ligne
-                    WHEN 3 THEN \'Validée - Prête à Transmettre\'
-                    WHEN 5 THEN \'Transmise - En Attente Retour\'
-                    WHEN 6 THEN \'Retour Enregistré\'
-                    ELSE \'Autre\' END as statut_label')
-            ])
-            ->where('ls.rejete', 0)
-            ->whereRaw('ISNULL(ls.annuler, 0) = 0')
-            ->whereIn('ls.Statut_Ligne', [3, 5]) // ✅ Validées (3) + Transmises en attente (5)
-            ->whereNotNull('ls.Date_Transmission') // Seulement avec date transmission
-            ->orderBy('ls.Statut_Ligne', 'asc') // 3 en premier
-            ->orderBy('ls.dateRetourMedecin', 'asc'); // En attente en premier
+ // ✅ SOLUTION : Utiliser CONVERT dans une requête SQL brute
+ $sql = "UPDATE [Ligne_Suivi]
+  SET [Montant_Ligne] = ?,
+   [Montant_Reglement] = ?,
+   [montrejete] = ?,
+   [usercorretion] = ?,
+   [datecorretion] = CONVERT(DATETIME, ?, 120),
+   [motifcorretion] = ?
+  WHERE [Id_Ligne] = ?";
 
-        $factures = collect($query->get());
+ $updated = DB::update($sql, [
+  (float) $request->MontantF,
+  (float) $request->montantReglement,
+  (float) ($request->MontantF - $request->montantReglement),
+  $user->name,
+  Carbon::now()->format('Y-m-d H:i:s'), // Format sans millisecondes
+  $request->motifcorretion,
+  $request->id
+ ]);
 
-        Log::info('TransmissionRetours: Admin Results', [
-            'count' => $factures->count(),
-            'sample_ids' => $factures->pluck('id')->take(3)->toArray(),
-            'statuts_found' => $factures->pluck('stLigne')->unique()->toArray() // [3,5]
-        ]);
+ if (!$updated) {
+  throw new \Exception('Aucune ligne mise à jour');
+ }
 
-        $factures->each(function ($facture) {
-            $facture->prest = $facture->prest ?? 'N/A';
-            $facture->ref = $facture->ref ?? 'N/A';
-            $facture->dtTransMed = $facture->dtTransMed ?? 'Non transmis';
-            $facture->dtRetourMed = $facture->dtRetourMed ?? 'En attente';
-        });
+ Log::info('Correction de facture effectuée', [
+  'user_id' => $user->id,
+  'facture_id' => $request->id,
+  'nouveau_montant' => $request->MontantF,
+ ]);
 
-    } elseif ($isIndividuel) {
-        // Individuel : stLigne IN [3,5]
-        $factures = LigneSuivi::select([
-            'Id_Ligne as id',
-            'Nom_Assure as prest',
-            'Numero_Reception',
-            DB::raw('(SELECT nom FROM partenaires WHERE id = ligne_suivi.Code_partenaire AND type = \'souscripteur\') as ref'), // Corrigé : Code_partenaire et type
-            DB::raw('CONVERT(varchar, Date_Debut, 103) as deb'),
-            DB::raw('CONVERT(varchar, Date_Fin, 103) as fin'),
-            DB::raw('CAST(Montant_Ligne AS INT) as mtligne'),
-            DB::raw('CONVERT(varchar, Date_Enregistrement, 103) as dtEnreg'),
-            DB::raw('CONVERT(varchar, datetransMedecin, 103) as dtTransMed'),
-            DB::raw('CONVERT(varchar, dateRetourMedecin, 103) as dtRetourMed'),
-            DB::raw('CONVERT(varchar, Date_Transmission, 103) as dtTrans'),
-            DB::raw('CONVERT(varchar, Date_Enregistrement, 103) as datetransestim'),
-            DB::raw('CONVERT(varchar, DATEADD(day, 1, Date_Enregistrement), 103) AS dateretestim'),
-            'Statut_Ligne as stLigne',
-            'Code_partenaire', // Corrigé : Code_partenaire
-            DB::raw('CASE WHEN dateRetourMedecin IS NOT NULL THEN 1 ELSE 0 END as retour_recu'),
-            DB::raw('CASE Statut_Ligne WHEN 3 THEN \'Validée - Prête à Transmettre\' WHEN 5 THEN \'Transmise - En Attente Retour\' ELSE \'Autre\' END as statut_label')
-        ])
-        ->leftJoin('partenaires as p', 'ligne_suivi.Code_partenaire', '=', 'p.id') // Corrigé : Code_partenaire
-        ->where('rejete', 0)
-        ->whereIn('Statut_Ligne', [3, 5]) // ✅ 3 + 5
-        ->whereNotNull('Date_Transmission')
-        ->whereNotNull('Code_partenaire') // Corrigé : Code_partenaire
-        ->where('p.type', 'souscripteur') // Corrigé : utilise p.type
-        ->where('is_evac', 0)
-        ->orderBy('Statut_Ligne', 'asc')
-        ->orderBy('dateRetourMedecin', 'asc')
-        ->get();
+ return response()->json([
+  'success' => true,
+  'message' => 'Correction enregistrée avec succès.',
+ ]);
 
-        Log::info('TransmissionRetours: Individuels Results', [
-            'count' => $factures->count(),
-            'sample_ids' => $factures->pluck('id')->take(3)->toArray()
-        ]);
+ } catch (\Exception $e) {
+ Log::error('Erreur correction facture', [
+  'error' => $e->getMessage(),
+  'facture_id' => $request->id,
+  'trace' => $e->getTraceAsString(),
+ ]);
 
-        $factures->each(function ($facture) {
-            $facture->ref = $facture->ref ?? 'N/A';
-            $facture->prest = $facture->prest ?? $facture->Nom_Assure ?? 'N/A';
-            $facture->dtTransMed = $facture->dtTransMed ?? 'Non transmis';
-            $facture->dtRetourMed = $facture->dtRetourMed ?? 'En attente';
-            $facture->type_label = 'Individuel';
-        });
-
-    } else {
-        // Tiers-Payant : stLigne IN [3,5]
-        $factures = LigneSuivi::select([
-            'Id_Ligne as id',
-            DB::raw('(SELECT nom FROM partenaires WHERE id = ligne_suivi.Code_partenaire AND type = \'prestataire\') as prest'), // Corrigé : Code_partenaire et type
-            'Numero_Reception',
-            'Reference_Facture as ref',
-            DB::raw('CONVERT(varchar, Date_Debut, 103) as deb'),
-            DB::raw('CONVERT(varchar, Date_Fin, 103) as fin'),
-            DB::raw('CAST(Montant_Ligne AS INT) as mtligne'),
-            DB::raw('CONVERT(varchar, Date_Enregistrement, 103) as dtEnreg'),
-            DB::raw('CONVERT(varchar, datetransMedecin, 103) as dtTransMed'),
-            DB::raw('CONVERT(varchar, dateRetourMedecin, 103) as dtRetourMed'),
-            DB::raw('CONVERT(varchar, Date_Transmission, 103) as dtTrans'),
-            DB::raw('\'\' as datetransestim'),
-            DB::raw('\'\' AS dateretestim'),
-            'Statut_Ligne as stLigne',
-            DB::raw('CASE WHEN dateRetourMedecin IS NOT NULL THEN 1 ELSE 0 END as retour_recu'),
-            DB::raw('CASE Statut_Ligne WHEN 3 THEN \'Validée - Prête à Transmettre\' WHEN 5 THEN \'Transmise - En Attente Retour\' ELSE \'Autre\' END as statut_label')
-        ])
-        ->leftJoin('partenaires as p', 'ligne_suivi.Code_partenaire', '=', 'p.id') // Corrigé : Code_partenaire
-        ->where('rejete', 0)
-        ->whereRaw('ISNULL(annuler, 0) = 0')
-        ->whereIn('Statut_Ligne', [3, 5]) // ✅ 3 + 5
-        ->whereNotNull('Date_Transmission')
-        ->whereNotNull('Code_partenaire') // Corrigé : Code_partenaire
-        ->where('p.type', 'prestataire') // Corrigé : utilise p.type
-        ->whereRaw('(SELECT coutierG FROM partenaires WHERE id = Code_partenaire) IS NULL OR coutierG = 0') // Corrigé : Code_partenaire
-        ->where('is_evac', 0)
-        ->orderBy('Statut_Ligne', 'asc')
-        ->orderBy('dateRetourMedecin', 'asc')
-        ->get();
-
-        Log::info('TransmissionRetours: Tiers-Payant Results', [
-            'count' => $factures->count(),
-            'sample_ids' => $factures->pluck('id')->take(3)->toArray()
-        ]);
-
-        $factures->each(function ($facture) {
-            $facture->prest = $facture->prest ?? 'N/A';
-            $facture->ref = $facture->ref ?? $facture->Reference_Facture ?? 'N/A';
-            $facture->dtTransMed = $facture->dtTransMed ?? 'Non transmis';
-            $facture->dtRetourMed = $facture->dtRetourMed ?? 'En attente';
-            $facture->type_label = 'Tiers-Payant';
-        });
-    }
-
-    $title = $isAdmin
-        ? 'Transmission et Retour des Factures aux Médécins (ADMIN - Tous Types)'
-        : ($isIndividuel
-            ? 'Transmission et Retour des Factures Individuelles aux Médécins'
-            : 'Transmission et Retour des Factures Tiers-Payant aux Médécins');
-
-    Log::info('TransmissionRetours: Final', [
-        'factures_count' => $factures->count(),
-        'title' => $title,
-        'statuts' => $factures->pluck('stLigne')->unique()->toArray() // [3,5]
-    ]);
-
-    return view('pages.transmission-facture', [ // Ajustez si vue différente
-        'factures' => $factures,
-        'isIndividuel' => $isIndividuel,
-        'isAdmin' => $isAdmin,
-        'title' => $title,
-        'profil_id' => $profilId
-    ]);
+ return response()->json([
+  'success' => false,
+  'message' => 'Erreur lors de la correction : ' . $e->getMessage(),
+ ], 500);
+ }
 }
 
+// ==========================================
+// MÊME SOLUTION POUR UPDATEANNULATION
+// ==========================================
 
-/**
- * Batch ou individuel transmission (stLigne=3 → 5, comme votre code PHP).
- */
-public function transmit(Request $request)
+public function updateAnnulation(Request $request)
 {
-    $request->validate([
-        'factures' => 'required|string|regex:/^[\d,]+$/u', // Comma-separated IDs
-        'date_transmission' => 'required|date|after_or_equal:today', // Prevent future dates if needed
-    ]);
+ $request->validate([
+ 'id' => 'required|exists:Ligne_Suivi,Id_Ligne',
+ 'motifcorretion' => 'required|string|max:500',
+ ]);
 
-    try {
-        $ids = array_filter(explode(',', $request->factures), 'is_numeric'); // Clean IDs
-        if (empty($ids)) {
-            return response()->json(['success' => false, 'message' => 'Aucune facture valide sélectionnée.'], 400);
-        }
+ try {
+ $user = auth()->user();
 
-        $dateTransmission = Carbon::parse($request->date_transmission);
-        $userSaisie = auth()->user();
-        $dateEnreg = Carbon::now();
+ if (!in_array($user->profil->code_profil ?? null, ['RRSI', 'RRSTP'])) {
+  return response()->json([
+  'success' => false,
+  'message' => 'Accès refusé.'
+  ], 403);
+ }
 
-        $updated = LigneSuivi::whereIn('Id_Ligne', $ids)
-            ->where('Statut_Ligne', 3) // Only ready ones
-            ->where('rejete', 0) // Not rejected
-            ->update([
-                'Statut_Ligne' => 5,
-                'datetransMedecin' => $dateTransmission,
-                'dateEnregMedecin' => $dateEnreg, // Fixed field name if it's dateEnregMedecin
-                         'usertransMedecin' => $userSaisie,
-            ]);
+ // ✅ Utiliser CONVERT dans SQL brut
+ $sql = "UPDATE [Ligne_Suivi]
+  SET [Statut_Ligne] = ?,
+   [usercorretion] = ?,
+   [datecorretion] = CONVERT(DATETIME, ?, 120),
+   [motifcorretion] = ?
+  WHERE [Id_Ligne] = ?";
 
-        Log::info('Transmission Batch', [
-            'user_id' => $userSaisie,
-            'ids' => $ids,
-            'updated_count' => $updated,
-            'date' => $dateTransmission
-        ]);
+ $updated = DB::update($sql, [
+  8, // Statut annulé
+  $user->name,
+  Carbon::now()->format('Y-m-d H:i:s'),
+  $request->motifcorretion,
+  $request->id
+ ]);
 
-        return response()->json([
-            'success' => $updated > 0,
-            'message' => $updated > 0 ? "{$updated} facture(s) transmise(s) (statut 5)." : 'Aucune facture mise à jour (vérifiez les statuts).'
-        ]);
+ if (!$updated) {
+  throw new \Exception('Aucune ligne mise à jour');
+ }
 
-    } catch (\Exception $e) {
-        Log::error('Transmission Error', ['error' => $e->getMessage(), 'request' => $request->all()]);
-        return response()->json(['success' => false, 'message' => 'Erreur serveur: ' . $e->getMessage()], 500);
-    }
+ Log::info('Annulation de facture effectuée', [
+  'user_id' => $user->id,
+  'facture_id' => $request->id,
+  'motif' => $request->motifcorretion,
+ ]);
+
+ return response()->json([
+  'success' => true,
+  'message' => 'Annulation enregistrée avec succès.',
+ ]);
+
+ } catch (\Exception $e) {
+ Log::error('Erreur annulation facture', [
+  'error' => $e->getMessage(),
+  'facture_id' => $request->id,
+ ]);
+
+ return response()->json([
+  'success' => false,
+  'message' => 'Erreur lors de l\'annulation : ' . $e->getMessage(),
+ ], 500);
+ }
 }
+
 }
