@@ -1187,7 +1187,7 @@ public function updateCorrection(Request $request)
  $user = auth()->user();
 
  // Vérification des permissions
- if (!in_array($user->profil->code_profil ?? null, ['RRSI', 'RRSTP'])) {
+ if (!in_array($user->profil->code_profil ?? null, ['RRSI', 'RRSTP', 'ADMIN'])) {
   return response()->json([
   'success' => false,
   'message' => 'Accès refusé.'
@@ -1224,10 +1224,8 @@ public function updateCorrection(Request $request)
   'nouveau_montant' => $request->MontantF,
  ]);
 
- return response()->json([
-  'success' => true,
-  'message' => 'Correction enregistrée avec succès.',
- ]);
+
+        return redirect()->back()->with('success', 'Correction enregistrée avec succès.');
 
  } catch (\Exception $e) {
  Log::error('Erreur correction facture', [
@@ -1290,10 +1288,8 @@ public function updateAnnulation(Request $request)
   'motif' => $request->motifcorretion,
  ]);
 
- return response()->json([
-  'success' => true,
-  'message' => 'Annulation enregistrée avec succès.',
- ]);
+
+        return redirect()->back()->with('success', 'Annulation enregistrée avec succès.');
 
  } catch (\Exception $e) {
  Log::error('Erreur annulation facture', [

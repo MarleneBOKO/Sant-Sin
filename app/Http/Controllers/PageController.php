@@ -319,7 +319,7 @@ if ($pageName === 'gestion-factures') {
 
 
    if ($pageName === 'listing-reporting') {
-       $factures = Facture::query()
+       $factures = DB::table('Ligne_Suivi')
         // ... vos conditions/filtres ici ...
         ->paginate(10)
         ->appends(request()->query());  

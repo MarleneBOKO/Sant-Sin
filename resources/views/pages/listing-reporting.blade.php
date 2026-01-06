@@ -40,130 +40,112 @@
                 </div>
             </div>
 
-            <!-- Résultats -->
-            @if(isset($factures) && count($factures) > 0)
-            <div class="bg-white shadow rounded">
-                <div class="border-b border-gray-200 px-6 py-3 flex justify-between items-center">
-                    <h5 class="text-blue-600 font-semibold text-lg">
-                        Liste des factures
-                    </h5>
-                    <div class="flex gap-2">
-                        <button id="btnExcel" class="bg-green-600 hover:bg-green-700 text-white font-medium py-1 px-3 rounded text-sm">
-                            📊 Excel
-                        </button>
-                        <button id="btnPDF" class="bg-red-600 hover:bg-red-700 text-white font-medium py-1 px-3 rounded text-sm">
-                            📄 PDF
-                        </button>
-                        <button id="btnCopy" class="bg-purple-600 hover:bg-purple-700 text-white font-medium py-1 px-3 rounded text-sm">
-                            📋 Copier
-                        </button>
-                    </div>
-                </div>
-            <div class="p-4 overflow-x-auto">
-                <table id="facturesTable" class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">N°</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date d'enreg.</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Prestataire</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Référence</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">N° Reception</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Mois</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Année</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Période</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date Demande</th>
-                            <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant Facture</th>
-                            <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant Réglé</th>
-                            <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant Rejeté</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Trans. Médecin</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Retour Médecin</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Réseau</th>
-                            <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rédacteur</th>
-                        </tr>
-                    </thead>
-                   <tbody class="bg-white divide-y divide-gray-200">
-                        @foreach($factures as $index => $facture)
+<!-- Résultats -->
+@if(request()->has('type_facture') && request()->has('date_debut') && request()->has('date_fin') && isset($factures) && count($factures) > 0)
+<div class="bg-white shadow rounded">
+    <div class="border-b border-gray-200 px-6 py-3 flex justify-between items-center">
+        <h5 class="text-blue-600 font-semibold text-lg">
+            Liste des factures
+        </h5>
+        <div class="flex gap-2">
+            <button id="btnExcel" class="bg-green-600 hover:bg-green-700 text-white font-medium py-1 px-3 rounded text-sm">
+                📊 Excel
+            </button>
+            <button id="btnPDF" class="bg-red-600 hover:bg-red-700 text-white font-medium py-1 px-3 rounded text-sm">
+                📄 PDF
+            </button>
+            <button id="btnCopy" class="bg-purple-600 hover:bg-purple-700 text-white font-medium py-1 px-3 rounded text-sm">
+                📋 Copier
+            </button>
+        </div>
+    </div>
+    <div class="p-4 overflow-x-auto">
+        <table id="facturesTable" class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">N°</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date d'enreg.</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Prestataire</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Référence</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">N° Reception</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Mois</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Année</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Période</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date Demande</th>
+                    <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant Facture</th>
+                    <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant Réglé</th>
+                    <th class="px-2 py-2 text-right text-xs font-medium text-gray-500 uppercase">Montant Rejeté</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Trans. Médecin</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Retour Médecin</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Réseau</th>
+                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rédacteur</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                @foreach($factures as $index => $facture)
+                @php
+                    $globalIndex = ($factures->currentPage() - 1) * $factures->perPage() + $index + 1;
+                    $statut = $facture->Statut_Ligne;
+                    $estRejetee = ($facture->montrejete > 0);
+                @endphp
+                <tr class="hover:bg-gray-50 text-sm">
+                    <td class="px-2 py-2">{{ $globalIndex }}</td>
+                    <td class="px-2 py-2">{{ $facture->Date_Enregistrement ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->Tiers ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->Reference_facture ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->Numero_reception ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->Mois_Facture ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->annee_facture ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->date_debut ?? '-' }} au {{ $facture->date_fin ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->Date_Enregistrement }}</td>
+                    <td class="px-2 py-2 text-right font-medium">
+                        {{ number_format($facture->Montant_facture ?? 0, 0, ',', ' ') }}
+                    </td>
+                    <td class="px-2 py-2 text-right ">
+                        {{ number_format($facture->Montant_Reglement ?? 0, 0, ',', ' ') }}
+                    </td>
+                    <td class="px-2 py-2 text-right ">
+                        {{ number_format($facture->montrejete ?? 0, 0, ',', ' ') }}
+                    </td>
+                    <td class="px-2 py-2 text-center">
                         @php
-                            // On récupère le code numérique du statut
-                            $statut = $facture->Statut_Ligne;
-                            // On vérifie s'il y a un montant rejeté pour afficher le badge "Rejetée"
-                            $estRejetee = ($facture->montrejete > 0);
+                            $statutCode = (int) ($facture->Statut_Ligne ?? 0);
+                            $libelleBase = $facture->transmission; // Correction : utilise transmission
+                            $montantRejete = (float) ($facture->montrejete ?? 0);
                         @endphp
-                        <tr class="hover:bg-gray-50 text-sm">
-                            <td class="px-2 py-2">{{ $index + 1 }}</td>
-                            <td class="px-2 py-2">{{ $facture->Date_Enregistrement ?? '-' }}</td>
-                            <td class="px-2 py-2">{{ $facture->Tiers ?? '-' }}</td>
-                            <td class="px-2 py-2">{{ $facture->Reference_facture ?? '-' }}</td>
-                            <td class="px-2 py-2">{{ $facture->Numero_reception ?? '-' }}</td>
-                            <td class="px-2 py-2">{{ $facture->Mois_Facture ?? '-' }}</td>
-                            <td class="px-2 py-2">{{ $facture->annee_facture ?? '-' }}</td>
-                            <td class="px-2 py-2">{{ $facture->date_debut }} au {{ $facture->date_fin }}</td>
-                            <td class="px-2 py-2">{{ $facture->Date_Enregistrement }}</td> {{-- Date demande --}}
-
-                            <td class="px-2 py-2 text-right font-medium">
-                                {{ number_format($facture->Montant_facture ?? 0, 0, ',', ' ') }}
-                            </td>
-                            <td class="px-2 py-2 text-right ">
-                                {{ number_format($facture->Montant_Reglement ?? 0, 0, ',', ' ') }}
-                            </td>
-                            <td class="px-2 py-2 text-right ">
-                                {{ number_format($facture->montrejete ?? 0, 0, ',', ' ') }}
-                            </td>
-
-                        <td class="px-2 py-2 text-center">
-                                    @php
-                                        $statutCode = (int) ($facture->Statut_Ligne ?? 0);
-                                        $libelleBase = $facture->transmission;
-                                        $montantRejete = (float) ($facture->montrejete ?? 0);
-                                    @endphp
-
-                                    {{-- Priorité 1 : Si un montant est rejeté, le statut devient "Rejetée" --}}
-                                    @if($montantRejete > 0)
-                                        <span class=" text-red-800 px-3 py-1 text-xs font-bold  ">
-                                            Rejetée
-                                        </span>
-
-                                    {{-- Priorité 2 : Sinon, on suit le cycle de vie classique --}}
-                                    @elseif($statutCode == 0)
-                                        <span class=" text-yellow-800 px-3 py-1 text-xs font-bold  ">
-                                            Non Traitée
-                                        </span>
-                                    @elseif($statutCode == 1)
-                                        <span class=" text-teal-800 px-3 py-1 text-xs font-bold  ">
-                                            Traitée
-                                        </span>
-                                    @elseif($statutCode == 3)
-                                        <span class=" text-green-800 px-3 py-1 text-xs font-bold ">
-                                            Réglée
-                                        </span>
-                                    @else
-                                        {{-- Pour Clôturée (4), Transmise Médecin (5), etc. --}}
-                                        <span class="bg-blue-100 text-blue-800 px-3 py-1 text-xs font-bold  ">
-                                            {{ $libelleBase ?? 'En cours' }}
-                                        </span>
-                                    @endif
-                            </td>
-
-                            <td class="px-2 py-2">{{ $facture->datetransMedecin ?? '-' }}</td>
-                            <td class="px-2 py-2">{{ $facture->RetourMedecin ?? '-' }}</td>
-                            <td class="px-2 py-2">{{ $facture->reseau ?? '-' }}</td>
-                            <td class="px-2 py-2">{{ $facture->redacteur ?? '-' }}</td>
-                        </tr>
-                        @endforeach
-                    </tbody>
-                </table>
-                {{-- Remplacer $index + 1 par ceci pour avoir le numéro réel sur toutes les pages --}}
-            </div>
-                <div class="px-6 py-4 border-t border-gray-200">
-                    {{ $factures->links() }}
-                </div>
-            </div>
-            @elseif(request()->has('type_facture'))
-            <div class="mt-6 p-4 bg-blue-100 text-blue-700 rounded text-center">
-                Aucun résultat trouvé
-            </div>
-            @endif
+                        @if($montantRejete > 0)
+                            <span class="text-red-800 px-3 py-1 text-xs font-bold">Rejetée</span>
+                        @elseif($statutCode == 0)
+                            <span class="text-yellow-800 px-3 py-1 text-xs font-bold">Non Traitée</span>
+                        @elseif($statutCode == 1)
+                            <span class="text-teal-800 px-3 py-1 text-xs font-bold">Traitée</span>
+                        @elseif($statutCode == 3)
+                            <span class="text-green-800 px-3 py-1 text-xs font-bold">Réglée</span>
+                        @else
+                            <span class="bg-blue-100 text-blue-800 px-3 py-1 text-xs font-bold">{{ $libelleBase ?? 'En cours' }}</span>
+                        @endif
+                    </td>
+                    <td class="px-2 py-2">{{ $facture->datetransMedecin ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->RetourMedecin ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->reseau ?? '-' }}</td>
+                    <td class="px-2 py-2">{{ $facture->redacteur ?? '-' }}</td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
+    </div>
+    @if($factures instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator)
+    <div class="px-6 py-4 border-t border-gray-200">
+        {{ $factures->links() }}
+    </div>
+    @endif
+</div>
+@elseif(request()->has('type_facture'))
+<div class="mt-6 p-4 bg-blue-100 text-blue-700 rounded text-center">
+    Aucun résultat trouvé
+</div>
+@endif
         </div>
     </div>
 </div>
